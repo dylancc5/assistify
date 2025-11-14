@@ -10,8 +10,9 @@ Your phone's not working? and you don't know what's wrong? Don't worry just clic
 7. Stop the screen recording once you're told to.
 
 Specific scenarios to tackle:
-Why is my phone not working?
-Why can’t I hear anything?
+
+- Why is my phone not working?
+- Why can’t I hear anything?
 
 
 
