@@ -403,6 +403,102 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'OK'**
   String get ok;
+
+  /// Today label for dates
+  ///
+  /// In en, this message translates to:
+  /// **'Today'**
+  String get today;
+
+  /// Yesterday label for dates
+  ///
+  /// In en, this message translates to:
+  /// **'Yesterday'**
+  String get yesterday;
+
+  /// No description provided for @monday.
+  ///
+  /// In en, this message translates to:
+  /// **'Monday'**
+  String get monday;
+
+  /// No description provided for @tuesday.
+  ///
+  /// In en, this message translates to:
+  /// **'Tuesday'**
+  String get tuesday;
+
+  /// No description provided for @wednesday.
+  ///
+  /// In en, this message translates to:
+  /// **'Wednesday'**
+  String get wednesday;
+
+  /// No description provided for @thursday.
+  ///
+  /// In en, this message translates to:
+  /// **'Thursday'**
+  String get thursday;
+
+  /// No description provided for @friday.
+  ///
+  /// In en, this message translates to:
+  /// **'Friday'**
+  String get friday;
+
+  /// No description provided for @saturday.
+  ///
+  /// In en, this message translates to:
+  /// **'Saturday'**
+  String get saturday;
+
+  /// No description provided for @sunday.
+  ///
+  /// In en, this message translates to:
+  /// **'Sunday'**
+  String get sunday;
+
+  /// No description provided for @am.
+  ///
+  /// In en, this message translates to:
+  /// **'AM'**
+  String get am;
+
+  /// No description provided for @pm.
+  ///
+  /// In en, this message translates to:
+  /// **'PM'**
+  String get pm;
+
+  /// Duration format
+  ///
+  /// In en, this message translates to:
+  /// **'{minutes} min {seconds} sec'**
+  String durationFormat(int minutes, int seconds);
+
+  /// Clear all button
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All'**
+  String get clearAll;
+
+  /// Clear all conversations dialog title
+  ///
+  /// In en, this message translates to:
+  /// **'Clear All Conversations'**
+  String get clearAllConversations;
+
+  /// Clear all conversations confirmation message
+  ///
+  /// In en, this message translates to:
+  /// **'Are you sure you want to clear all conversations? This action cannot be undone.'**
+  String get areYouSureYouWantToClearAllConversations;
+
+  /// All conversations cleared confirmation message
+  ///
+  /// In en, this message translates to:
+  /// **'All conversations cleared'**
+  String get allConversationsCleared;
 }
 
 class _AppLocalizationsDelegate

@@ -213,6 +213,47 @@
   "ok": "OK",
   "@ok": {
     "description": "OK button"
+  },
+  "today": "Today",
+  "@today": {
+    "description": "Today label for dates"
+  },
+  "yesterday": "Yesterday",
+  "@yesterday": {
+    "description": "Yesterday label for dates"
+  },
+  "monday": "Monday",
+  "tuesday": "Tuesday",
+  "wednesday": "Wednesday",
+  "thursday": "Thursday",
+  "friday": "Friday",
+  "saturday": "Saturday",
+  "sunday": "Sunday",
+  "am": "AM",
+  "pm": "PM",
+  "durationFormat": "{minutes} min {seconds} sec",
+  "@durationFormat": {
+    "description": "Duration format",
+    "placeholders": {
+      "minutes": {"type": "int"},
+      "seconds": {"type": "int"}
+    }
+  },
+  "clearAll": "Clear All",
+  "@clearAll": {
+    "description": "Clear all button"
+  },
+  "clearAllConversations": "Clear All Conversations",
+  "@clearAllConversations": {
+    "description": "Clear all conversations dialog title"
+  },
+  "areYouSureYouWantToClearAllConversations": "Are you sure you want to clear all conversations? This action cannot be undone.",
+  "@areYouSureYouWantToClearAllConversations": {
+    "description": "Clear all conversations confirmation message"
+  },
+  "allConversationsCleared": "All conversations cleared",
+  "@allConversationsCleared": {
+    "description": "All conversations cleared confirmation message"
   }
 }
 

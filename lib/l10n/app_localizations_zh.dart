@@ -167,4 +167,54 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get ok => '确定';
+
+  @override
+  String get today => '今天';
+
+  @override
+  String get yesterday => '昨天';
+
+  @override
+  String get monday => '星期一';
+
+  @override
+  String get tuesday => '星期二';
+
+  @override
+  String get wednesday => '星期三';
+
+  @override
+  String get thursday => '星期四';
+
+  @override
+  String get friday => '星期五';
+
+  @override
+  String get saturday => '星期六';
+
+  @override
+  String get sunday => '星期日';
+
+  @override
+  String get am => '上午';
+
+  @override
+  String get pm => '下午';
+
+  @override
+  String durationFormat(int minutes, int seconds) {
+    return '$minutes 分 $seconds 秒';
+  }
+
+  @override
+  String get clearAll => '清除全部';
+
+  @override
+  String get clearAllConversations => '清除所有对话';
+
+  @override
+  String get areYouSureYouWantToClearAllConversations => '您确定要清除所有对话吗？此操作无法撤销。';
+
+  @override
+  String get allConversationsCleared => '所有对话已清除';
 }

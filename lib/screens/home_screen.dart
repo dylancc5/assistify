@@ -4,14 +4,86 @@ import '../constants/colors.dart';
 import '../constants/dimensions.dart';
 import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
+import '../services/tts_service.dart';
 import '../widgets/voice_agent_circle.dart';
 import '../widgets/control_button.dart';
 import '../utils/localization_helper.dart';
 import 'settings_screen.dart';
 
 /// Main home screen with voice agent and controls
-class HomeScreen extends StatelessWidget {
+class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
+
+  @override
+  State<HomeScreen> createState() => _HomeScreenState();
+}
+
+class _HomeScreenState extends State<HomeScreen> {
+  bool _hasShownVoicePrompt = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _checkEnhancedVoicePrompt();
+  }
+
+  void _checkEnhancedVoicePrompt() {
+    if (_hasShownVoicePrompt) return;
+
+    final appState = Provider.of<AppStateProvider>(context, listen: false);
+    if (appState.shouldPromptForEnhancedVoice) {
+      _hasShownVoicePrompt = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _showEnhancedVoiceDialog(appState);
+      });
+    }
+  }
+
+  void _showEnhancedVoiceDialog(AppStateProvider appState) {
+    final l10n = LocalizationHelper.of(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
+
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: colors.cardBackground,
+        title: Text(
+          'Enhanced Voice Available',
+          style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
+        ),
+        content: Text(
+          'For a more natural voice experience, download the enhanced "${appState.missingVoiceName}" voice from Settings.\n\nGo to: Settings > Accessibility > Spoken Content > Voices > ${appState.missingVoiceName}',
+          style: AppTextStyles.body.copyWith(color: colors.textSecondary),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.of(context).pop();
+              appState.dismissEnhancedVoicePrompt();
+            },
+            child: Text(
+              l10n.cancel,
+              style: TextStyle(color: colors.textSecondary),
+            ),
+          ),
+          TextButton(
+            onPressed: () async {
+              Navigator.of(context).pop();
+              appState.dismissEnhancedVoicePrompt();
+              final ttsService = TTSService();
+              await ttsService.openVoiceSettings();
+            },
+            child: Text(
+              l10n.openSettings,
+              style: TextStyle(color: colors.primaryBlue),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -112,17 +184,62 @@ class HomeScreen extends StatelessWidget {
           ],
         ),
       ),
-      child: Center(
-        child: Consumer<AppStateProvider>(
-          builder: (context, appState, child) {
-            return VoiceAgentCircle(
-              size: circleSize,
-              audioLevel: appState.audioLevel,
-              isActive: appState.isChatActive,
-              colors: colors,
-            );
-          },
-        ),
+      child: Consumer<AppStateProvider>(
+        builder: (context, appState, child) {
+          return Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              VoiceAgentCircle(
+                size: circleSize,
+                audioLevel: appState.audioLevel,
+                isActive: appState.isChatActive,
+                colors: colors,
+              ),
+              const SizedBox(height: AppDimensions.md),
+              // Gemini response display
+              if (appState.isGeminiLoading)
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: AppDimensions.lg,
+                  ),
+                  child: Text(
+                    '...',
+                    style: AppTextStyles.body.copyWith(
+                      color: colors.textSecondary,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                )
+              else if (appState.geminiResponse != null)
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: AppDimensions.lg,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(AppDimensions.md),
+                      decoration: BoxDecoration(
+                        color: colors.cardBackground.withValues(alpha: 0.9),
+                        borderRadius: BorderRadius.circular(
+                          AppDimensions.borderRadiusMedium,
+                        ),
+                        border: colors.isHighContrast
+                            ? Border.all(color: colors.border, width: 2)
+                            : null,
+                      ),
+                      child: Text(
+                        appState.geminiResponse!,
+                        style: AppTextStyles.body.copyWith(
+                          color: colors.textPrimary,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       ),
     );
   }

@@ -33,6 +33,12 @@ import Speech
   private var speechEventSink: FlutterEventSink?
   private let silenceThreshold: TimeInterval = 1.5  // seconds of silence to trigger segment end
 
+  // TTS properties
+  private var ttsMethodChannel: FlutterMethodChannel?
+  private var speechSynthesizer: AVSpeechSynthesizer?
+  private var ttsDelegate: TTSDelegate?
+  private var ttsCompletionHandler: ((Bool) -> Void)?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -91,6 +97,48 @@ import Speech
 
     // Initialize audio engine (speech recognizer will be created dynamically with language)
     audioEngine = AVAudioEngine()
+
+    // Set up method channel for TTS
+    ttsMethodChannel = FlutterMethodChannel(
+      name: "com.assistify/tts",
+      binaryMessenger: controller.binaryMessenger
+    )
+
+    // Initialize speech synthesizer with delegate
+    speechSynthesizer = AVSpeechSynthesizer()
+    ttsDelegate = TTSDelegate(appDelegate: self)
+    speechSynthesizer?.delegate = ttsDelegate
+
+    ttsMethodChannel?.setMethodCallHandler { [weak self] (call, result) in
+      guard let self = self else { return }
+
+      switch call.method {
+      case "speak":
+        if let args = call.arguments as? [String: Any],
+           let text = args["text"] as? String,
+           let languageCode = args["languageCode"] as? String {
+          let slowerSpeech = args["slowerSpeech"] as? Bool ?? false
+          self.speakText(text: text, languageCode: languageCode, slowerSpeech: slowerSpeech, result: result)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing required arguments", details: nil))
+        }
+      case "stop":
+        self.stopSpeaking(result: result)
+      case "isSpeaking":
+        result(self.speechSynthesizer?.isSpeaking ?? false)
+      case "checkEnhancedVoice":
+        if let args = call.arguments as? [String: Any],
+           let languageCode = args["languageCode"] as? String {
+          self.checkEnhancedVoiceAvailable(languageCode: languageCode, result: result)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Missing languageCode", details: nil))
+        }
+      case "openVoiceSettings":
+        self.openVoiceSettings(result: result)
+      default:
+        result(FlutterMethodNotImplemented)
+      }
+    }
 
     speechMethodChannel?.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else { return }
@@ -437,7 +485,8 @@ import Speech
     // Configure audio session
     do {
       let audioSession = AVAudioSession.sharedInstance()
-      try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+      // Use playAndRecord to allow both TTS and speech recognition
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       result(FlutterError(code: "AUDIO_SESSION_ERROR",
@@ -608,15 +657,23 @@ import Speech
   // MARK: - Silence Detection Methods
 
   private func resetSilenceTimer() {
-    // Cancel existing timer
-    silenceTimer?.invalidate()
+    // Capture the current transcript value before dispatching to main thread
+    let transcript = self.currentTranscript
 
-    // Only start timer if we have content to save
-    guard !currentTranscript.isEmpty else { return }
+    // Must run on main thread for timer to work
+    DispatchQueue.main.async { [weak self] in
+      guard let self = self else { return }
 
-    // Start new timer
-    silenceTimer = Timer.scheduledTimer(withTimeInterval: silenceThreshold, repeats: false) { [weak self] _ in
-      self?.onSilenceDetected()
+      // Cancel existing timer
+      self.silenceTimer?.invalidate()
+
+      // Only start timer if we have content to save
+      guard !transcript.isEmpty else { return }
+
+      // Start new timer on main run loop
+      self.silenceTimer = Timer.scheduledTimer(withTimeInterval: self.silenceThreshold, repeats: false) { [weak self] _ in
+        self?.onSilenceDetected()
+      }
     }
   }
 
@@ -632,22 +689,15 @@ import Speech
       DispatchQueue.main.async {
         sink(["event": "segmentComplete", "text": segment])
       }
-    } else {
-      NSLog("WARNING: speechEventSink is nil, cannot send segmentComplete event")
     }
 
-    // Fully stop and restart recognition (like ending and starting a new chat)
+    // Fully stop and restart recognition
     fullyRestartRecognition()
   }
 
   private func fullyRestartRecognition() {
-    print("fullyRestartRecognition: starting restart process")
-
     // Fully stop everything
-    guard let engine = audioEngine else {
-      print("fullyRestartRecognition: audioEngine is nil")
-      return
-    }
+    guard let engine = audioEngine else { return }
 
     // Cancel silence timer first
     cancelSilenceTimer()
@@ -661,7 +711,6 @@ import Speech
     // Stop and remove tap only if running
     if engine.isRunning {
       engine.stop()
-      print("fullyRestartRecognition: stopped audio engine")
     }
     engine.inputNode.removeTap(onBus: 0)
 
@@ -671,20 +720,18 @@ import Speech
 
     // Small delay to ensure clean restart
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) { [weak self] in
-      print("fullyRestartRecognition: calling startFreshRecognition after delay")
-      self?.startFreshRecognition()
+      guard let self = self else { return }
+      self.startFreshRecognition()
     }
   }
 
   private func startFreshRecognition() {
     guard let engine = audioEngine else {
-      print("startFreshRecognition: audioEngine is nil")
       isListening = false
       return
     }
 
     guard let recognizer = speechRecognizer, recognizer.isAvailable else {
-      print("startFreshRecognition: recognizer not available")
       isListening = false
       return
     }
@@ -692,7 +739,8 @@ import Speech
     // Configure audio session
     do {
       let audioSession = AVAudioSession.sharedInstance()
-      try audioSession.setCategory(.record, mode: .measurement, options: .duckOthers)
+      // Use playAndRecord to allow both TTS and speech recognition
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       print("Audio session error during restart: \(error.localizedDescription)")
@@ -723,14 +771,8 @@ import Speech
         }
       }
 
-      if let error = error {
-        // Only log if it's not a cancellation error (216) or end of utterance (203)
-        let nsError = error as NSError
-        if nsError.domain == "kAFAssistantErrorDomain" && (nsError.code == 216 || nsError.code == 203) {
-          // These are expected errors during restart, ignore them
-          return
-        }
-        print("Recognition error during restart: \(error.localizedDescription)")
+      if error != nil {
+        // Ignore expected errors during restart (cancellation 216, end of utterance 203)
       }
     }
 
@@ -755,11 +797,16 @@ import Speech
     do {
       engine.prepare()
       try engine.start()
-      print("startFreshRecognition: successfully restarted")
-      // isListening stays true
+      isListening = true
     } catch {
-      print("Failed to restart audio engine: \(error.localizedDescription)")
       isListening = false
+
+      // Notify Flutter that recognition stopped unexpectedly
+      if let sink = speechEventSink {
+        DispatchQueue.main.async {
+          sink(["event": "recognitionStopped", "error": error.localizedDescription])
+        }
+      }
     }
   }
 
@@ -775,6 +822,138 @@ import Speech
 
   func setSpeechEventSink(_ sink: FlutterEventSink?) {
     speechEventSink = sink
+  }
+
+  // MARK: - TTS Methods
+
+  private func speakText(text: String, languageCode: String, slowerSpeech: Bool, result: @escaping FlutterResult) {
+    guard let synthesizer = speechSynthesizer else {
+      result(FlutterError(code: "TTS_UNAVAILABLE", message: "Speech synthesizer not available", details: nil))
+      return
+    }
+
+    // Stop any current speech
+    if synthesizer.isSpeaking {
+      synthesizer.stopSpeaking(at: .immediate)
+    }
+
+    // Configure audio session for playback and recording
+    do {
+      let audioSession = AVAudioSession.sharedInstance()
+      // Use playAndRecord to allow both TTS and speech recognition
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+      try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    } catch {
+      print("TTS audio session error: \(error.localizedDescription)")
+    }
+
+    let utterance = AVSpeechUtterance(string: text)
+
+    // Set language and voice
+    let voiceLanguage: String
+    if languageCode == "zh-Hans" {
+      voiceLanguage = "zh-CN"
+    } else {
+      voiceLanguage = "en-US"
+    }
+
+    // Select voice based on language
+    // Priority: Enhanced/Premium Alex/Ting-Ting > Basic Alex/Ting-Ting > Samantha/default
+    let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == voiceLanguage }
+
+    let selectedVoice: AVSpeechSynthesisVoice?
+    if languageCode == "zh-Hans" {
+      // Try enhanced Ting-Ting first, then basic Ting-Ting, then any voice
+      let enhancedTing = voices.first { voice in
+        let id = voice.identifier.lowercased()
+        return id.contains("ting") && (voice.quality == .enhanced || id.contains("premium"))
+      }
+      let basicTing = voices.first { $0.identifier.lowercased().contains("ting") }
+      selectedVoice = enhancedTing ?? basicTing ?? voices.first
+    } else {
+      // Try enhanced Alex first, then basic Alex, then Samantha as fallback
+      let enhancedAlex = voices.first { voice in
+        let id = voice.identifier.lowercased()
+        return id.contains("alex") && (voice.quality == .enhanced || id.contains("premium"))
+      }
+      let basicAlex = voices.first { $0.identifier.lowercased().contains("alex") }
+      let samantha = voices.first { $0.identifier.lowercased().contains("samantha") }
+      selectedVoice = enhancedAlex ?? basicAlex ?? samantha ?? voices.first
+    }
+
+    if let voice = selectedVoice {
+      utterance.voice = voice
+    } else {
+      // Fallback to default voice for language
+      utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
+    }
+
+    // Set speech rate
+    if slowerSpeech {
+      utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.8  // Slower
+    } else {
+      utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 1.0  // Conversational (default)
+    }
+
+    // Keep pitch and volume at defaults
+    utterance.pitchMultiplier = 1.0
+    utterance.volume = 1.0
+
+    // Set completion handler to notify Flutter when speech finishes
+    ttsCompletionHandler = { success in
+      result(success)
+    }
+
+    synthesizer.speak(utterance)
+  }
+
+  // Called by TTSDelegate when speech finishes
+  func onSpeechFinished(success: Bool) {
+    ttsCompletionHandler?(success)
+    ttsCompletionHandler = nil
+  }
+
+  private func stopSpeaking(result: @escaping FlutterResult) {
+    if let synthesizer = speechSynthesizer, synthesizer.isSpeaking {
+      synthesizer.stopSpeaking(at: .immediate)
+    }
+    result(nil)
+  }
+
+  private func checkEnhancedVoiceAvailable(languageCode: String, result: @escaping FlutterResult) {
+    let voiceLanguage = languageCode == "zh-Hans" ? "zh-CN" : "en-US"
+    let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == voiceLanguage }
+
+    let hasEnhanced: Bool
+    if languageCode == "zh-Hans" {
+      hasEnhanced = voices.contains { voice in
+        let id = voice.identifier.lowercased()
+        return id.contains("ting") && (voice.quality == .enhanced || id.contains("premium"))
+      }
+    } else {
+      hasEnhanced = voices.contains { voice in
+        let id = voice.identifier.lowercased()
+        return id.contains("alex") && (voice.quality == .enhanced || id.contains("premium"))
+      }
+    }
+
+    // Return info about voice availability
+    result([
+      "hasEnhanced": hasEnhanced,
+      "voiceName": languageCode == "zh-Hans" ? "Ting-Ting" : "Alex"
+    ])
+  }
+
+  private func openVoiceSettings(result: @escaping FlutterResult) {
+    // Open the app's settings page - this is the only reliable URL scheme
+    // Users will need to navigate to: Settings > Accessibility > Spoken Content > Voices
+    if let url = URL(string: UIApplication.openSettingsURLString) {
+      UIApplication.shared.open(url, options: [:]) { success in
+        result(success)
+      }
+    } else {
+      result(false)
+    }
   }
 }
 
@@ -813,5 +992,23 @@ class SpeechEventStreamHandler: NSObject, FlutterStreamHandler {
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
     appDelegate?.setSpeechEventSink(nil)
     return nil
+  }
+}
+
+// MARK: - TTS Delegate
+
+class TTSDelegate: NSObject, AVSpeechSynthesizerDelegate {
+  private weak var appDelegate: AppDelegate?
+
+  init(appDelegate: AppDelegate) {
+    self.appDelegate = appDelegate
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    appDelegate?.onSpeechFinished(success: true)
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    appDelegate?.onSpeechFinished(success: false)
   }
 }

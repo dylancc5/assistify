@@ -64,6 +64,22 @@
   "permissionRequired": "需要权限",
   "screenRecordingPermissionIsRequired": "Assistify 需要屏幕录制权限才能正常工作。",
   "microphonePermissionIsRequired": "Assistify 需要麦克风权限才能正常工作。",
-  "ok": "确定"
+  "ok": "确定",
+  "today": "今天",
+  "yesterday": "昨天",
+  "monday": "星期一",
+  "tuesday": "星期二",
+  "wednesday": "星期三",
+  "thursday": "星期四",
+  "friday": "星期五",
+  "saturday": "星期六",
+  "sunday": "星期日",
+  "am": "上午",
+  "pm": "下午",
+  "durationFormat": "{minutes} 分 {seconds} 秒",
+  "clearAll": "清除全部",
+  "clearAllConversations": "清除所有对话",
+  "areYouSureYouWantToClearAllConversations": "您确定要清除所有对话吗？此操作无法撤销。",
+  "allConversationsCleared": "所有对话已清除"
 }
 

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
 import 'constants/colors.dart';
 import 'constants/theme.dart';
@@ -8,8 +9,11 @@ import 'screens/home_screen.dart';
 import 'widgets/onboarding_flow.dart';
 import 'utils/localization_helper.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Load environment variables
+  await dotenv.load(fileName: '.env');
 
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(

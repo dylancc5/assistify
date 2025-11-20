@@ -5,6 +5,8 @@ import '../services/permission_service.dart';
 import '../services/recording_service.dart';
 import '../services/storage_service.dart';
 import '../services/speech_service.dart';
+import '../services/gemini_service.dart';
+import '../services/tts_service.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
 import '../models/message.dart';
@@ -22,6 +24,8 @@ class AppStateProvider extends ChangeNotifier {
   final RecordingService _recordingService;
   final StorageService _storageService;
   final SpeechService _speechService;
+  final GeminiService _geminiService;
+  final TTSService _ttsService;
 
   // Permission states
   PermissionState _screenRecordingPermission = PermissionState.notDetermined;
@@ -54,15 +58,31 @@ class AppStateProvider extends ChangeNotifier {
   List<Message> _currentMessages = [];
   DateTime? _currentMessageStartTime;
 
+  // Gemini response tracking
+  String? _geminiResponse;
+  bool _isGeminiLoading = false;
+
+  // Enhanced voice prompt tracking
+  bool _shouldPromptForEnhancedVoice = false;
+  String _missingVoiceName = '';
+
+  // Getters for enhanced voice prompt
+  bool get shouldPromptForEnhancedVoice => _shouldPromptForEnhancedVoice;
+  String get missingVoiceName => _missingVoiceName;
+
   AppStateProvider({
     PermissionService? permissionService,
     RecordingService? recordingService,
     StorageService? storageService,
     SpeechService? speechService,
+    GeminiService? geminiService,
+    TTSService? ttsService,
   }) : _permissionService = permissionService ?? PermissionService(),
        _recordingService = recordingService ?? RecordingService(),
        _storageService = storageService ?? StorageService(),
-       _speechService = speechService ?? SpeechService();
+       _speechService = speechService ?? SpeechService(),
+       _geminiService = geminiService ?? GeminiService(),
+       _ttsService = ttsService ?? TTSService();
 
   // Getters
   PermissionState get screenRecordingPermission => _screenRecordingPermission;
@@ -77,6 +97,8 @@ class AppStateProvider extends ChangeNotifier {
   UserPreferences get preferences => _preferences;
   List<Conversation> get conversations => _conversations;
   List<ScreenRecording> get screenRecordings => _screenRecordings;
+  String? get geminiResponse => _geminiResponse;
+  bool get isGeminiLoading => _isGeminiLoading;
 
   /// Initialize app state from storage
   Future<void> initialize() async {
@@ -98,6 +120,22 @@ class AppStateProvider extends ChangeNotifier {
           : PermissionState.denied;
     }
 
+    // Initialize Gemini service
+    await _geminiService.initialize();
+
+    // Check if enhanced voice is available for current language
+    final voiceInfo = await _ttsService.checkEnhancedVoice(_preferences.languageCode);
+    if (!(voiceInfo['hasEnhanced'] as bool)) {
+      _shouldPromptForEnhancedVoice = true;
+      _missingVoiceName = voiceInfo['voiceName'] as String;
+    }
+
+    notifyListeners();
+  }
+
+  /// Clear the enhanced voice prompt flag
+  void dismissEnhancedVoicePrompt() {
+    _shouldPromptForEnhancedVoice = false;
     notifyListeners();
   }
 
@@ -314,6 +352,8 @@ class AppStateProvider extends ChangeNotifier {
     if (eventType == 'segmentComplete') {
       final text = event['text'] as String?;
       if (text != null && text.isNotEmpty) {
+        // Stop any TTS playback when user starts speaking
+        _ttsService.stop();
         // Create a message for this completed segment
         final message = Message(
           id: DateTime.now().millisecondsSinceEpoch.toString(),
@@ -325,13 +365,102 @@ class AppStateProvider extends ChangeNotifier {
         // Reset message start time for next segment
         _currentMessageStartTime = DateTime.now();
 
+        // Send to Gemini and get response
+        _sendToGemini(text);
+
+        // Restart speech recognition for next message
+        if (_isChatActive && !_isMicrophoneMuted) {
+          // Stop current session first, then restart
+          _speechService.stopListening().then((_) {
+            if (_isChatActive && !_isMicrophoneMuted) {
+              _speechService.startListening(
+                languageCode: _preferences.languageCode,
+              );
+            }
+          });
+        }
+
         notifyListeners();
+      }
+    } else if (eventType == 'recognitionStopped') {
+      // Recognition stopped unexpectedly, try to restart if chat is still active
+      if (_isChatActive && !_isMicrophoneMuted) {
+        Future.delayed(const Duration(milliseconds: 500), () async {
+          if (_isChatActive && !_isMicrophoneMuted) {
+            await _speechService.startListening(
+              languageCode: _preferences.languageCode,
+            );
+          }
+        });
       }
     }
   }
 
+  /// Send message to Gemini and update response
+  /// This runs asynchronously without blocking the speech recognition
+  void _sendToGemini(String message) {
+    if (!_geminiService.isInitialized) return;
+
+    _isGeminiLoading = true;
+    notifyListeners();
+
+    // Run async without awaiting - allows speech recognition to continue
+    _geminiService.sendMessage(message).then((response) async {
+      _geminiResponse = response;
+      _isGeminiLoading = false;
+
+      // Add Gemini response as a message in the conversation
+      if (response != null && response.isNotEmpty) {
+        final agentMessage = Message(
+          id: '${DateTime.now().millisecondsSinceEpoch}_agent',
+          text: response,
+          timestamp: DateTime.now(),
+          sender: MessageSender.agent,
+        );
+        _currentMessages.add(agentMessage);
+
+        // Stop speech recognition while TTS is speaking to avoid self-listening
+        if (_isChatActive && !_isMicrophoneMuted) {
+          await _speechService.stopListening();
+          _audioLevelSubscription?.cancel();
+          _audioLevel = 0.0;
+          notifyListeners();
+        }
+
+        // Speak the response using TTS
+        await _ttsService.speak(
+          text: response,
+          languageCode: _preferences.languageCode,
+          slowerSpeech: _preferences.slowerSpeechEnabled,
+        );
+
+        // Restart speech recognition after TTS finishes
+        if (_isChatActive && !_isMicrophoneMuted) {
+          final started = await _speechService.startListening(
+            languageCode: _preferences.languageCode,
+          );
+          if (started) {
+            _audioLevelSubscription?.cancel();
+            _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
+              _audioLevel = level;
+              notifyListeners();
+            });
+          }
+        }
+      }
+
+      notifyListeners();
+    }).catchError((error) {
+      _isGeminiLoading = false;
+      notifyListeners();
+    });
+  }
+
   /// End chat and save conversation to history
   Future<void> endChat() async {
+    // Stop any TTS playback
+    _ttsService.stop();
+
     // Stop screen recording if active (screen recording only works during chat)
     if (_isScreenRecordingActive) {
       final recordingInfo = await _recordingService.stopRecording();
@@ -394,6 +523,11 @@ class AppStateProvider extends ChangeNotifier {
     // Reset message tracking
     _currentMessages = [];
     _currentMessageStartTime = null;
+
+    // Reset Gemini response and chat session
+    _geminiResponse = null;
+    _isGeminiLoading = false;
+    _geminiService.resetChat();
 
     _isChatActive = false;
     _chatStartTime = null;
@@ -551,6 +685,13 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Clear all conversations from history
+  Future<void> clearAllConversations() async {
+    await _storageService.saveConversations([]);
+    _conversations = [];
+    notifyListeners();
+  }
+
   /// Delete screen recording from history
   Future<void> deleteScreenRecording(String id) async {
     // First, find the recording to get the file path
@@ -589,6 +730,7 @@ class AppStateProvider extends ChangeNotifier {
     _speechEventSubscription?.cancel();
     _recordingService.dispose();
     _speechService.dispose();
+    _ttsService.dispose();
     super.dispose();
   }
 }
