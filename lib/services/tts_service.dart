@@ -50,7 +50,7 @@ class TTSService {
   /// Returns a map with 'hasEnhanced' (bool) and 'voiceName' (String)
   Future<Map<String, dynamic>> checkEnhancedVoice(String languageCode) async {
     // Determine voice name based on language
-    final voiceName = languageCode == 'zh-Hans' ? 'Ting-Ting' : 'Alex';
+    final voiceName = languageCode == 'zh-Hans' ? 'Ting-Ting' : 'Siri Voice 4';
 
     try {
       final result = await _methodChannel.invokeMethod(

@@ -857,35 +857,39 @@ import Speech
       voiceLanguage = "en-US"
     }
 
-    // Select voice based on language
-    // Priority: Enhanced/Premium Alex/Ting-Ting > Basic Alex/Ting-Ting > Samantha/default
+    // Select best available voice for the language
     let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == voiceLanguage }
 
     let selectedVoice: AVSpeechSynthesisVoice?
     if languageCode == "zh-Hans" {
-      // Try enhanced Ting-Ting first, then basic Ting-Ting, then any voice
-      let enhancedTing = voices.first { voice in
-        let id = voice.identifier.lowercased()
-        return id.contains("ting") && (voice.quality == .enhanced || id.contains("premium"))
+      // Prefer Lilian Premium, otherwise fall back to other enhanced Mandarin voices
+      let lilianPremium = voices.first { voice in
+        let name = voice.name.lowercased()
+        return name.contains("lilian") && (voice.quality == .enhanced || name.contains("premium"))
       }
-      let basicTing = voices.first { $0.identifier.lowercased().contains("ting") }
-      selectedVoice = enhancedTing ?? basicTing ?? voices.first
+      let anyEnhanced = voices.first { $0.quality == .enhanced }
+      selectedVoice = lilianPremium ?? anyEnhanced ?? voices.first
     } else {
-      // Try enhanced Alex first, then basic Alex, then Samantha as fallback
-      let enhancedAlex = voices.first { voice in
-        let id = voice.identifier.lowercased()
-        return id.contains("alex") && (voice.quality == .enhanced || id.contains("premium"))
+      // Prefer Zoe (Premium), then other Siri voices, then Samantha, then default
+      let zoePremium = voices.first { voice in
+        let name = voice.name.lowercased()
+        return name.contains("zoe") && (voice.quality == .enhanced || name.contains("premium"))
       }
-      let basicAlex = voices.first { $0.identifier.lowercased().contains("alex") }
-      let samantha = voices.first { $0.identifier.lowercased().contains("samantha") }
-      selectedVoice = enhancedAlex ?? basicAlex ?? samantha ?? voices.first
+      let anySiri = voices.first { $0.identifier.lowercased().contains("siri") || $0.name.lowercased().contains("siri") }
+      let samantha = voices.first {
+        let name = $0.name.lowercased()
+        let id = $0.identifier.lowercased()
+        return name.contains("samantha") || id.contains("samantha")
+      }
+      selectedVoice = zoePremium ?? anySiri ?? samantha ?? voices.first
     }
 
     if let voice = selectedVoice {
       utterance.voice = voice
+      print("Using voice: \(voice.identifier)")
     } else {
-      // Fallback to default voice for language
       utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
+      print("Using default voice for \(voiceLanguage)")
     }
 
     // Set speech rate
@@ -927,20 +931,21 @@ import Speech
     let hasEnhanced: Bool
     if languageCode == "zh-Hans" {
       hasEnhanced = voices.contains { voice in
-        let id = voice.identifier.lowercased()
-        return id.contains("ting") && (voice.quality == .enhanced || id.contains("premium"))
+        let name = voice.name.lowercased()
+        return name.contains("lilian") && (voice.quality == .enhanced || name.contains("premium"))
       }
     } else {
+      // Check for Zoe Premium
       hasEnhanced = voices.contains { voice in
-        let id = voice.identifier.lowercased()
-        return id.contains("alex") && (voice.quality == .enhanced || id.contains("premium"))
+        let name = voice.name.lowercased()
+        return name.contains("zoe") && (voice.quality == .enhanced || name.contains("premium"))
       }
     }
 
     // Return info about voice availability
     result([
       "hasEnhanced": hasEnhanced,
-      "voiceName": languageCode == "zh-Hans" ? "Ting-Ting" : "Alex"
+      "voiceName": languageCode == "zh-Hans" ? "Lilian Premium" : "Zoe Premium"
     ])
   }
 

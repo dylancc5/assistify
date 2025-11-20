@@ -13,6 +13,7 @@ class StorageService {
   static const String _keyUserPreferences = 'user_preferences';
   static const String _keyConversations = 'conversations';
   static const String _keyScreenRecordings = 'screen_recordings';
+  static const String _keyVoiceRecommendationSeen = 'voice_recommendation_seen';
 
   /// Check if onboarding is complete
   Future<bool> hasCompletedOnboarding() async {
@@ -151,6 +152,18 @@ class StorageService {
     final recordings = await loadScreenRecordings();
     recordings.removeWhere((r) => r.id == id);
     await saveScreenRecordings(recordings);
+  }
+
+  /// Check if voice recommendation has been seen
+  Future<bool> hasSeenVoiceRecommendation() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_keyVoiceRecommendationSeen) ?? false;
+  }
+
+  /// Mark voice recommendation as seen
+  Future<void> setVoiceRecommendationSeen(bool seen) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_keyVoiceRecommendationSeen, seen);
   }
 
   /// Clear all data

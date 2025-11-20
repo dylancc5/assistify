@@ -54,7 +54,7 @@ class _HomeScreenState extends State<HomeScreen> {
           style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
         ),
         content: Text(
-          'For a more natural voice experience, download the enhanced "${appState.missingVoiceName}" voice from Settings.\n\nGo to: Settings > Accessibility > Spoken Content > Voices > ${appState.missingVoiceName}',
+          'For a more natural voice experience, download the enhanced "${appState.missingVoiceName}" voice.\n\nGo to: Settings > Accessibility > Read and Speak > Voices > English > ${appState.missingVoiceName}',
           style: AppTextStyles.body.copyWith(color: colors.textSecondary),
         ),
         actions: [

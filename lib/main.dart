@@ -1,3 +1,16 @@
+// TODO: Delete ugly text subtitles (make it a setting)
+// TODO: Find way to screen record even outside of app
+// TODO: Implement screenshot input into LLM API
+// TODO: Prompt engineer better base prompt using README doc
+// TODO: Prompt engineer output formatting for better TTS quality
+// TODO: Turn conversation history into RAG
+// FIXME: Check other promised features to implement
+// FIXME: Make sure microphone turns back on, even in the background
+
+// TODO: Open privacy policy
+// TODO: Open terms of service
+// TODO: Open feedback form
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';

@@ -123,19 +123,22 @@ class AppStateProvider extends ChangeNotifier {
     // Initialize Gemini service
     await _geminiService.initialize();
 
-    // Check if enhanced voice is available for current language
-    final voiceInfo = await _ttsService.checkEnhancedVoice(_preferences.languageCode);
-    if (!(voiceInfo['hasEnhanced'] as bool)) {
+    // Show voice recommendation on first launch
+    final hasSeenVoicePrompt = await _storageService.hasSeenVoiceRecommendation();
+    if (!hasSeenVoicePrompt) {
       _shouldPromptForEnhancedVoice = true;
-      _missingVoiceName = voiceInfo['voiceName'] as String;
+      _missingVoiceName = _preferences.languageCode == 'zh-Hans'
+          ? 'Lilian (Premium)'
+          : 'Siri Voice 4';
     }
 
     notifyListeners();
   }
 
   /// Clear the enhanced voice prompt flag
-  void dismissEnhancedVoicePrompt() {
+  Future<void> dismissEnhancedVoicePrompt() async {
     _shouldPromptForEnhancedVoice = false;
+    await _storageService.setVoiceRecommendationSeen(true);
     notifyListeners();
   }
 
