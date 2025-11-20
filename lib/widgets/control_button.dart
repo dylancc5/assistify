@@ -10,7 +10,7 @@ class ControlButton extends StatefulWidget {
   final Color backgroundColor;
   final Color iconColor;
   final Color labelColor;
-  final VoidCallback onTap;
+  final VoidCallback? onTap;
   final bool isActive;
   final bool showPulse;
   final double size;
@@ -22,7 +22,7 @@ class ControlButton extends StatefulWidget {
     required this.backgroundColor,
     this.iconColor = Colors.white,
     required this.labelColor,
-    required this.onTap,
+    this.onTap,
     this.isActive = false,
     this.showPulse = false,
     this.size = AppDimensions.controlButtonSize,
@@ -95,14 +95,18 @@ class _ControlButtonState extends State<ControlButton>
 
   @override
   Widget build(BuildContext context) {
+    final isEnabled = widget.onTap != null;
+    
     return GestureDetector(
-      onTapDown: _handleTapDown,
-      onTapUp: _handleTapUp,
-      onTapCancel: _handleTapCancel,
-      onTap: () {
-        HapticFeedback.lightImpact();
-        widget.onTap();
-      },
+      onTapDown: isEnabled ? _handleTapDown : null,
+      onTapUp: isEnabled ? _handleTapUp : null,
+      onTapCancel: isEnabled ? _handleTapCancel : null,
+      onTap: isEnabled
+          ? () {
+              HapticFeedback.lightImpact();
+              widget.onTap!();
+            }
+          : null,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         mainAxisAlignment: MainAxisAlignment.center,

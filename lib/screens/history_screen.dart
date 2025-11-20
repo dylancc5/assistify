@@ -13,18 +13,23 @@ class HistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppStateProvider>(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: colors.background,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           LocalizationHelper.of(context).history,
-          style: AppTextStyles.heading,
+          style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
         ),
         centerTitle: true,
       ),
@@ -34,18 +39,18 @@ class HistoryScreen extends StatelessWidget {
 
           // Show empty state if no conversations
           if (conversations.isEmpty) {
-            return _buildEmptyState();
+            return _buildEmptyState(colors);
           }
 
           // Show conversation list
-          return _buildConversationList(context, conversations);
+          return _buildConversationList(context, conversations, colors);
         },
       ),
     );
   }
 
   /// Build empty state
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppColorScheme colors) {
     return Builder(
       builder: (context) {
         final l10n = LocalizationHelper.of(context);
@@ -56,18 +61,18 @@ class HistoryScreen extends StatelessWidget {
               Icon(
                 Icons.chat_bubble_outline,
                 size: 64,
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
               const SizedBox(height: AppDimensions.md),
               Text(
                 l10n.noConversationsYet,
-                style: AppTextStyles.heading,
+                style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
               ),
               const SizedBox(height: AppDimensions.sm),
               Text(
                 l10n.yourConversationsWithAssistifyWillAppearHere,
                 style: AppTextStyles.body.copyWith(
-                  color: AppColors.textSecondary,
+                  color: colors.textSecondary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -82,6 +87,7 @@ class HistoryScreen extends StatelessWidget {
   Widget _buildConversationList(
     BuildContext context,
     List<Conversation> conversations,
+    AppColorScheme colors,
   ) {
     return ListView.builder(
       padding: const EdgeInsets.symmetric(
@@ -91,7 +97,7 @@ class HistoryScreen extends StatelessWidget {
       itemCount: conversations.length,
       itemBuilder: (context, index) {
         final conversation = conversations[index];
-        return _buildConversationCard(context, conversation);
+        return _buildConversationCard(context, conversation, colors);
       },
     );
   }
@@ -100,12 +106,16 @@ class HistoryScreen extends StatelessWidget {
   Widget _buildConversationCard(
     BuildContext context,
     Conversation conversation,
+    AppColorScheme colors,
   ) {
     return Card(
       elevation: AppDimensions.cardElevation,
       margin: const EdgeInsets.only(bottom: AppDimensions.sm + AppDimensions.xs),
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: colors.isHighContrast
+            ? BorderSide(color: colors.border, width: 2)
+            : BorderSide.none,
       ),
       child: InkWell(
         onTap: () {
@@ -130,7 +140,7 @@ class HistoryScreen extends StatelessWidget {
               // Date/Time
               Text(
                 conversation.formattedDateTime,
-                style: AppTextStyles.caption,
+                style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
               ),
 
               const SizedBox(height: AppDimensions.sm),
@@ -138,7 +148,7 @@ class HistoryScreen extends StatelessWidget {
               // Preview Text
               Text(
                 conversation.previewText,
-                style: AppTextStyles.body,
+                style: AppTextStyles.body.copyWith(color: colors.textPrimary),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
               ),
@@ -148,15 +158,15 @@ class HistoryScreen extends StatelessWidget {
               // Duration
               Row(
                 children: [
-                  const Icon(
+                  Icon(
                     Icons.access_time,
                     size: 16,
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                   ),
                   const SizedBox(width: AppDimensions.xs),
                   Text(
                     conversation.formattedDuration,
-                    style: AppTextStyles.caption,
+                    style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
                   ),
                 ],
               ),
@@ -211,29 +221,34 @@ class ConversationDetailScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppStateProvider>(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: colors.background,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           conversation.formattedDateTime,
-          style: AppTextStyles.heading,
+          style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
         ),
         centerTitle: true,
       ),
       body: conversation.messages.isNotEmpty
-          ? _buildMessageList()
-          : _buildFullTranscript(),
+          ? _buildMessageList(colors)
+          : _buildFullTranscript(colors),
     );
   }
 
   /// Build message list with speech bubbles
-  Widget _buildMessageList() {
+  Widget _buildMessageList(AppColorScheme colors) {
     return ListView.builder(
       padding: const EdgeInsets.all(AppDimensions.md),
       itemCount: conversation.messages.length + 1, // +1 for duration header
@@ -244,15 +259,15 @@ class ConversationDetailScreen extends StatelessWidget {
             padding: const EdgeInsets.only(bottom: AppDimensions.md),
             child: Row(
               children: [
-                const Icon(
+                Icon(
                   Icons.access_time,
                   size: 16,
-                  color: AppColors.textSecondary,
+                  color: colors.textSecondary,
                 ),
                 const SizedBox(width: AppDimensions.xs),
                 Text(
                   conversation.formattedDuration,
-                  style: AppTextStyles.caption,
+                  style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
                 ),
               ],
             ),
@@ -260,13 +275,13 @@ class ConversationDetailScreen extends StatelessWidget {
         }
 
         final message = conversation.messages[index - 1];
-        return _buildMessageBubble(message);
+        return _buildMessageBubble(message, colors);
       },
     );
   }
 
   /// Build a single message bubble
-  Widget _buildMessageBubble(message) {
+  Widget _buildMessageBubble(message, AppColorScheme colors) {
     final timeString = _formatMessageTime(message.timestamp);
 
     return Align(
@@ -278,8 +293,11 @@ class ConversationDetailScreen extends StatelessWidget {
         ),
         padding: const EdgeInsets.all(AppDimensions.md),
         decoration: BoxDecoration(
-          color: AppColors.primaryBlue.withValues(alpha: 0.1),
+          color: colors.primaryBlue.withValues(alpha: colors.isHighContrast ? 0.2 : 0.1),
           borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+          border: colors.isHighContrast
+              ? Border.all(color: colors.primaryBlue, width: 2)
+              : null,
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.end,
@@ -288,6 +306,7 @@ class ConversationDetailScreen extends StatelessWidget {
               message.text,
               style: AppTextStyles.body.copyWith(
                 height: 1.4,
+                color: colors.textPrimary,
               ),
             ),
             const SizedBox(height: AppDimensions.xs),
@@ -295,6 +314,7 @@ class ConversationDetailScreen extends StatelessWidget {
               timeString,
               style: AppTextStyles.caption.copyWith(
                 fontSize: 10,
+                color: colors.textSecondary,
               ),
             ),
           ],
@@ -312,7 +332,7 @@ class ConversationDetailScreen extends StatelessWidget {
   }
 
   /// Build full transcript view (fallback for old conversations)
-  Widget _buildFullTranscript() {
+  Widget _buildFullTranscript(AppColorScheme colors) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(AppDimensions.md),
       child: Column(
@@ -321,15 +341,15 @@ class ConversationDetailScreen extends StatelessWidget {
           // Duration info
           Row(
             children: [
-              const Icon(
+              Icon(
                 Icons.access_time,
                 size: 16,
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
               const SizedBox(width: AppDimensions.xs),
               Text(
                 conversation.formattedDuration,
-                style: AppTextStyles.caption,
+                style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
               ),
             ],
           ),
@@ -340,8 +360,11 @@ class ConversationDetailScreen extends StatelessWidget {
             width: double.infinity,
             padding: const EdgeInsets.all(AppDimensions.md),
             decoration: BoxDecoration(
-              color: AppColors.cardBackground,
+              color: colors.cardBackground,
               borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+              border: colors.isHighContrast
+                  ? Border.all(color: colors.border, width: 2)
+                  : null,
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.05),
@@ -354,6 +377,7 @@ class ConversationDetailScreen extends StatelessWidget {
               conversation.fullTranscript ?? conversation.previewText,
               style: AppTextStyles.body.copyWith(
                 height: 1.6,
+                color: colors.textPrimary,
               ),
             ),
           ),

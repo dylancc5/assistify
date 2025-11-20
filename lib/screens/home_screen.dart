@@ -17,25 +17,34 @@ class HomeScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final screenWidth = MediaQuery.of(context).size.width;
     final paddingMultiplier = AppDimensions.getPaddingMultiplier(screenWidth);
+    final appState = Provider.of<AppStateProvider>(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
 
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       body: SafeArea(
         child: Column(
           children: [
             // App Bar
-            _buildAppBar(context),
+            _buildAppBar(context, colors),
 
             // Voice Agent Section (upper portion)
             Expanded(
               flex: 75,
-              child: _buildVoiceAgentSection(context, screenWidth),
+              child: _buildVoiceAgentSection(context, screenWidth, colors),
             ),
 
             // Control Buttons Section (lower portion - reduced size)
             Expanded(
               flex: 25,
-              child: _buildControlSection(context, screenWidth, paddingMultiplier),
+              child: _buildControlSection(
+                context,
+                screenWidth,
+                paddingMultiplier,
+                colors,
+              ),
             ),
           ],
         ),
@@ -44,7 +53,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Build app bar
-  Widget _buildAppBar(BuildContext context) {
+  Widget _buildAppBar(BuildContext context, AppColorScheme colors) {
     return SizedBox(
       height: AppDimensions.appBarHeight,
       child: Stack(
@@ -53,7 +62,9 @@ class HomeScreen extends StatelessWidget {
           Center(
             child: Text(
               'Assistify',
-              style: AppTextStyles.appTitle,
+              style: AppTextStyles.appTitle.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
           ),
           // Settings button on the right
@@ -63,9 +74,9 @@ class HomeScreen extends StatelessWidget {
             bottom: 0,
             child: Center(
               child: IconButton(
-                icon: const Icon(
+                icon: Icon(
                   Icons.settings,
-                  color: AppColors.textSecondary,
+                  color: colors.textSecondary,
                 ),
                 onPressed: () {
                   Navigator.of(context).push(
@@ -83,17 +94,21 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Build voice agent section
-  Widget _buildVoiceAgentSection(BuildContext context, double screenWidth) {
+  Widget _buildVoiceAgentSection(
+    BuildContext context,
+    double screenWidth,
+    AppColorScheme colors,
+  ) {
     final circleSize = AppDimensions.getVoiceAgentCircleSize(screenWidth);
 
     return Container(
-      decoration: const BoxDecoration(
+      decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
           colors: [
-            AppColors.gradientStart,
-            AppColors.gradientEnd,
+            colors.gradientStart,
+            colors.gradientEnd,
           ],
         ),
       ),
@@ -104,6 +119,7 @@ class HomeScreen extends StatelessWidget {
               size: circleSize,
               audioLevel: appState.audioLevel,
               isActive: appState.isChatActive,
+              colors: colors,
             );
           },
         ),
@@ -116,16 +132,20 @@ class HomeScreen extends StatelessWidget {
     BuildContext context,
     double screenWidth,
     double paddingMultiplier,
+    AppColorScheme colors,
   ) {
     final buttonSize = AppDimensions.getControlButtonSize(screenWidth);
 
     return Container(
       decoration: BoxDecoration(
-        color: AppColors.cardBackground,
+        color: colors.cardBackground,
         borderRadius: const BorderRadius.only(
           topLeft: Radius.circular(AppDimensions.borderRadiusXLarge),
           topRight: Radius.circular(AppDimensions.borderRadiusXLarge),
         ),
+        border: colors.isHighContrast
+            ? Border.all(color: colors.border, width: 2)
+            : null,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.1),
@@ -153,11 +173,11 @@ class HomeScreen extends StatelessWidget {
                       : Icons.chat_bubble_outline,
                   label: appState.isChatActive ? l10n.endChat : l10n.startChat,
                   backgroundColor: appState.isChatActive
-                      ? AppColors.accentCoral
-                      : AppColors.successGreen,
+                      ? colors.accentCoral
+                      : colors.successGreen,
                   labelColor: appState.isChatActive
-                      ? AppColors.accentCoral
-                      : AppColors.successGreen,
+                      ? colors.accentCoral
+                      : colors.successGreen,
                   onTap: () {
                     if (appState.isChatActive) {
                       appState.endChat();
@@ -173,28 +193,34 @@ class HomeScreen extends StatelessWidget {
                   icon: appState.isMicrophoneMuted ? Icons.mic_off : Icons.mic,
                   label: l10n.microphone,
                   backgroundColor: appState.isMicrophoneMuted
-                      ? AppColors.accentCoral
-                      : AppColors.primaryBlue,
+                      ? colors.accentCoral
+                      : colors.primaryBlue,
                   labelColor: appState.isMicrophoneMuted
-                      ? AppColors.accentCoral
-                      : AppColors.primaryBlue,
+                      ? colors.accentCoral
+                      : colors.primaryBlue,
                   onTap: () => appState.toggleMicrophoneMute(context),
                   size: buttonSize,
                 ),
 
-                // Screen Recording Button
+                // Screen Recording Button (only enabled when chat is active)
                 ControlButton(
                   icon: appState.isScreenRecordingActive
                       ? Icons.videocam
                       : Icons.videocam_outlined,
                   label: l10n.shareScreen,
                   backgroundColor: appState.isScreenRecordingActive
-                      ? AppColors.successGreen
-                      : AppColors.buttonGray,
+                      ? colors.successGreen
+                      : (appState.isChatActive
+                          ? colors.buttonGray
+                          : colors.disabled),
                   labelColor: appState.isScreenRecordingActive
-                      ? AppColors.successGreen
-                      : AppColors.textSecondary,
-                  onTap: () => appState.toggleScreenRecording(context),
+                      ? colors.successGreen
+                      : (appState.isChatActive
+                          ? colors.textSecondary
+                          : colors.textSecondary.withValues(alpha: 0.5)),
+                  onTap: appState.isChatActive
+                      ? () => appState.toggleScreenRecording(context)
+                      : null,
                   showPulse: appState.isScreenRecordingActive,
                   size: buttonSize,
                 ),

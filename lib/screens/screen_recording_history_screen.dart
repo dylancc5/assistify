@@ -13,18 +13,23 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppStateProvider>(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: colors.background,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           LocalizationHelper.of(context).screenHistory,
-          style: AppTextStyles.heading,
+          style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
         ),
         centerTitle: true,
       ),
@@ -33,7 +38,7 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
           final recordings = appState.screenRecordings;
 
           if (recordings.isEmpty) {
-            return _buildEmptyState();
+            return _buildEmptyState(colors);
           }
 
           return ListView.builder(
@@ -53,7 +58,7 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
   }
 
   /// Build empty state
-  Widget _buildEmptyState() {
+  Widget _buildEmptyState(AppColorScheme colors) {
     return Builder(
       builder: (context) {
         final l10n = LocalizationHelper.of(context);
@@ -66,13 +71,13 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
                 Icon(
                   Icons.videocam_off,
                   size: 80,
-                  color: AppColors.textSecondary.withValues(alpha: 0.3),
+                  color: colors.textSecondary.withValues(alpha: 0.3),
                 ),
                 const SizedBox(height: AppDimensions.lg),
                 Text(
                   l10n.noSharedScreensYet,
                   style: AppTextStyles.bodyLarge.copyWith(
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),
@@ -80,7 +85,7 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
                 Text(
                   l10n.shareYourScreenFromTheHomeScreenToSeeItHere,
                   style: AppTextStyles.body.copyWith(
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                   ),
                   textAlign: TextAlign.center,
                 ),

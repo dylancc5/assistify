@@ -7,12 +7,14 @@ class VoiceAgentCircle extends StatefulWidget {
   final double size;
   final double audioLevel;
   final bool isActive;
+  final AppColorScheme? colors;
 
   const VoiceAgentCircle({
     super.key,
     this.size = AppDimensions.voiceAgentCircleSize,
     this.audioLevel = 0.0,
     this.isActive = false,
+    this.colors,
   });
 
   @override
@@ -115,6 +117,7 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
   Widget build(BuildContext context) {
     // Calculate audio-reactive scale (adds to breathing animation)
     final audioScale = 1.0 + (_smoothedAudioLevel * 0.15);
+    final colors = widget.colors ?? const AppColorScheme();
 
     return AnimatedBuilder(
       animation: Listenable.merge([_breathingAnimation, _activationController]),
@@ -125,40 +128,40 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
 
         // Interpolate colors based on activation
         final gradientStart = Color.lerp(
-          AppColors.voiceAgentGradientStartInactive,
-          AppColors.voiceAgentGradientStart,
+          colors.voiceAgentGradientStartInactive,
+          colors.voiceAgentGradientStart,
           activationValue,
         )!;
 
         final gradientEnd = Color.lerp(
-          AppColors.voiceAgentGradientEndInactive,
+          colors.voiceAgentGradientEndInactive,
           Color.lerp(
-            AppColors.voiceAgentGradientEnd,
-            AppColors.primaryBlue,
+            colors.voiceAgentGradientEnd,
+            colors.primaryBlue,
             _smoothedAudioLevel * 0.5,
           )!,
           activationValue,
         )!;
 
         final borderColor = Color.lerp(
-          AppColors.voiceAgentBorderInactive,
+          colors.voiceAgentBorderInactive,
           Color.lerp(
-            AppColors.voiceAgentBorder,
-            AppColors.primaryBlue,
+            colors.voiceAgentBorder,
+            colors.primaryBlue,
             _smoothedAudioLevel,
           )!,
           activationValue,
         )!;
 
         final shadowColor = Color.lerp(
-          AppColors.buttonGray.withValues(alpha: 0.1),
-          AppColors.primaryBlue.withValues(alpha: 0.1 + _smoothedAudioLevel * 0.3),
+          colors.buttonGray.withValues(alpha: 0.1),
+          colors.primaryBlue.withValues(alpha: 0.1 + _smoothedAudioLevel * 0.3),
           activationValue,
         )!;
 
         final iconColor = Color.lerp(
-          AppColors.voiceAgentIconInactive,
-          AppColors.voiceAgentIcon,
+          colors.voiceAgentIconInactive,
+          colors.voiceAgentIcon,
           activationValue,
         )!;
 
@@ -167,8 +170,8 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
           children: [
             // Outer ripple rings (audio reactive)
             if (_smoothedAudioLevel > 0.05) ...[
-              _buildRippleRing(widget.size * 1.3, _smoothedAudioLevel * 0.3),
-              _buildRippleRing(widget.size * 1.15, _smoothedAudioLevel * 0.5),
+              _buildRippleRing(widget.size * 1.3, _smoothedAudioLevel * 0.3, colors),
+              _buildRippleRing(widget.size * 1.15, _smoothedAudioLevel * 0.5, colors),
             ],
 
             // Main circle with scale and rotation
@@ -215,14 +218,14 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
     );
   }
 
-  Widget _buildRippleRing(double size, double opacity) {
+  Widget _buildRippleRing(double size, double opacity, AppColorScheme colors) {
     return Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
         border: Border.all(
-          color: AppColors.primaryBlue.withValues(alpha: opacity),
+          color: colors.primaryBlue.withValues(alpha: opacity),
           width: 2,
         ),
       ),

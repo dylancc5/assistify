@@ -150,6 +150,7 @@ class AppStateProvider extends ChangeNotifier {
   }
 
   /// Toggle screen recording
+  /// Note: Screen recording can only be started when chat is active
   Future<void> toggleScreenRecording(BuildContext? context) async {
     if (_isScreenRecordingActive) {
       final recordingInfo = await _recordingService.stopRecording();
@@ -171,6 +172,11 @@ class AppStateProvider extends ChangeNotifier {
       }
 
       notifyListeners();
+      return;
+    }
+
+    // Screen recording can only be started when chat is active
+    if (!_isChatActive) {
       return;
     }
 
@@ -234,18 +240,8 @@ class AppStateProvider extends ChangeNotifier {
         });
       }
     } else {
-      // Muting - stop speech recognition and get the transcript
-      final transcript = await _speechService.stopListening();
-
-      // Save the transcript as a message
-      if (transcript.isNotEmpty) {
-        final message = Message(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          text: transcript,
-          timestamp: _currentMessageStartTime ?? DateTime.now(),
-        );
-        _currentMessages.add(message);
-      }
+      // Muting - just stop speech recognition, workflow handles silence
+      await _speechService.stopListening();
 
       _isMicrophoneMuted = true;
       _audioLevel = 0.0;
@@ -336,6 +332,27 @@ class AppStateProvider extends ChangeNotifier {
 
   /// End chat and save conversation to history
   Future<void> endChat() async {
+    // Stop screen recording if active (screen recording only works during chat)
+    if (_isScreenRecordingActive) {
+      final recordingInfo = await _recordingService.stopRecording();
+      _isScreenRecordingActive = false;
+
+      // Save the recording to history if we got valid info
+      if (recordingInfo != null && recordingInfo['filePath'] != null) {
+        final recording = ScreenRecording(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          filePath: recordingInfo['filePath'] as String,
+          timestamp: DateTime.now(),
+          duration: Duration(
+            milliseconds: recordingInfo['durationMs'] as int? ?? 0,
+          ),
+          fileSize: recordingInfo['fileSize'] as int? ?? 0,
+        );
+        await _storageService.addScreenRecording(recording);
+        _screenRecordings = await _storageService.loadScreenRecordings();
+      }
+    }
+
     // Stop listening and get final transcript
     final transcript = await _speechService.endChat();
 

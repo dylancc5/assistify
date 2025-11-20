@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'constants/colors.dart';
-import 'constants/text_styles.dart';
+import 'constants/theme.dart';
 import 'providers/app_state_provider.dart';
 import 'screens/home_screen.dart';
 import 'widgets/onboarding_flow.dart';
@@ -41,39 +41,9 @@ class AssistifyApp extends StatelessWidget {
             locale: locale,
             supportedLocales: LocalizationHelper.supportedLocales,
             localizationsDelegates: LocalizationHelper.localizationDelegates,
-            theme: ThemeData(
-              useMaterial3: true,
-              colorScheme: ColorScheme.fromSeed(
-                seedColor: AppColors.primaryBlue,
-                primary: AppColors.primaryBlue,
-                secondary: AppColors.accentCoral,
-                surface: AppColors.cardBackground,
-                error: AppColors.accentCoral,
-              ),
-              scaffoldBackgroundColor: AppColors.background,
-              fontFamily: AppTextStyles.fontFamily,
-              appBarTheme: const AppBarTheme(
-                backgroundColor: AppColors.background,
-                foregroundColor: AppColors.textPrimary,
-                elevation: 0,
-                centerTitle: true,
-              ),
-              cardTheme: CardThemeData(
-                color: AppColors.cardBackground,
-                elevation: 1,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              elevatedButtonTheme: ElevatedButtonThemeData(
-                style: ElevatedButton.styleFrom(
-                  textStyle: AppTextStyles.buttonLabel,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-              ),
-            ),
+            theme: appState.preferences.highContrastEnabled
+                ? AppTheme.highContrast
+                : AppTheme.standard,
             builder: (context, child) {
               // Apply text scaling based on user preferences
               final mediaQuery = MediaQuery.of(context);

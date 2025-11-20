@@ -14,18 +14,23 @@ class SettingsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final appState = Provider.of<AppStateProvider>(context);
+    final colors = AppColorScheme(
+      isHighContrast: appState.preferences.highContrastEnabled,
+    );
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: colors.background,
       appBar: AppBar(
-        backgroundColor: AppColors.background,
+        backgroundColor: colors.background,
         elevation: 1,
         leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          icon: Icon(Icons.arrow_back, color: colors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
           LocalizationHelper.of(context).settings,
-          style: AppTextStyles.heading,
+          style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
         ),
         centerTitle: true,
       ),
@@ -36,22 +41,22 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: AppDimensions.md),
 
             // Conversation History Card
-            _buildHistoryCard(context),
+            _buildHistoryCard(context, colors),
 
             const SizedBox(height: AppDimensions.md),
 
             // Screen Recording History Card
-            _buildScreenRecordingHistorySection(context),
+            _buildScreenRecordingHistorySection(context, colors),
 
             const SizedBox(height: AppDimensions.md),
 
             // Preferences Card
-            _buildPreferencesCard(context),
+            _buildPreferencesCard(context, colors),
 
             const SizedBox(height: AppDimensions.md),
 
             // About Card
-            _buildAboutCard(context),
+            _buildAboutCard(context, colors),
 
             const SizedBox(height: AppDimensions.lg),
           ],
@@ -61,24 +66,30 @@ class SettingsScreen extends StatelessWidget {
   }
 
   /// Build history card
-  Widget _buildHistoryCard(BuildContext context) {
+  Widget _buildHistoryCard(BuildContext context, AppColorScheme colors) {
     final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: colors.isHighContrast
+            ? BorderSide(color: colors.border, width: 2)
+            : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l10n.conversationHistory, style: AppTextStyles.bodyLarge),
+            Text(
+              l10n.conversationHistory,
+              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+            ),
             const SizedBox(height: AppDimensions.sm),
             Text(
               l10n.viewYourPastConversations,
               style: AppTextStyles.body.copyWith(
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
             ),
             const SizedBox(height: AppDimensions.md),
@@ -94,13 +105,16 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
-                  foregroundColor: AppColors.primaryBlue,
+                  backgroundColor: colors.primaryBlue.withValues(alpha: colors.isHighContrast ? 0.2 : 0.1),
+                  foregroundColor: colors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(
                       AppDimensions.borderRadiusSmall,
                     ),
+                    side: colors.isHighContrast
+                        ? BorderSide(color: colors.primaryBlue, width: 2)
+                        : BorderSide.none,
                   ),
                 ),
                 icon: const Icon(Icons.history),
@@ -114,24 +128,30 @@ class SettingsScreen extends StatelessWidget {
   }
 
   /// Build screen recording history section
-  Widget _buildScreenRecordingHistorySection(BuildContext context) {
+  Widget _buildScreenRecordingHistorySection(BuildContext context, AppColorScheme colors) {
     final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: colors.isHighContrast
+            ? BorderSide(color: colors.border, width: 2)
+            : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l10n.screenHistory, style: AppTextStyles.bodyLarge),
+            Text(
+              l10n.screenHistory,
+              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+            ),
             const SizedBox(height: AppDimensions.sm),
             Text(
               l10n.viewAndManageYourSharedScreens,
               style: AppTextStyles.body.copyWith(
-                color: AppColors.textSecondary,
+                color: colors.textSecondary,
               ),
             ),
             const SizedBox(height: AppDimensions.md),
@@ -147,13 +167,16 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
-                  foregroundColor: AppColors.primaryBlue,
+                  backgroundColor: colors.primaryBlue.withValues(alpha: colors.isHighContrast ? 0.2 : 0.1),
+                  foregroundColor: colors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(
                       AppDimensions.borderRadiusSmall,
                     ),
+                    side: colors.isHighContrast
+                        ? BorderSide(color: colors.primaryBlue, width: 2)
+                        : BorderSide.none,
                   ),
                 ),
                 icon: const Icon(Icons.videocam),
@@ -167,11 +190,14 @@ class SettingsScreen extends StatelessWidget {
   }
 
   /// Build preferences card
-  Widget _buildPreferencesCard(BuildContext context) {
+  Widget _buildPreferencesCard(BuildContext context, AppColorScheme colors) {
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: colors.isHighContrast
+            ? BorderSide(color: colors.border, width: 2)
+            : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.md),
@@ -183,7 +209,10 @@ class SettingsScreen extends StatelessWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(l10n.preferences, style: AppTextStyles.bodyLarge),
+                Text(
+                  l10n.preferences,
+                  style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+                ),
                 const SizedBox(height: AppDimensions.sm),
 
                 // Large Text Toggle
@@ -197,9 +226,10 @@ class SettingsScreen extends StatelessWidget {
                       prefs.copyWith(largeTextEnabled: value),
                     );
                   },
+                  colors: colors,
                 ),
 
-                const Divider(color: AppColors.divider, height: 1),
+                Divider(color: colors.divider, height: 1),
 
                 // Slower Speech Toggle
                 _buildPreferenceItem(
@@ -212,9 +242,10 @@ class SettingsScreen extends StatelessWidget {
                       prefs.copyWith(slowerSpeechEnabled: value),
                     );
                   },
+                  colors: colors,
                 ),
 
-                const Divider(color: AppColors.divider, height: 1),
+                Divider(color: colors.divider, height: 1),
 
                 // High Contrast Toggle
                 _buildPreferenceItem(
@@ -227,9 +258,10 @@ class SettingsScreen extends StatelessWidget {
                       prefs.copyWith(highContrastEnabled: value),
                     );
                   },
+                  colors: colors,
                 ),
 
-                const Divider(color: AppColors.divider, height: 1),
+                Divider(color: colors.divider, height: 1),
 
                 // Simplified Chinese Toggle
                 _buildPreferenceItem(
@@ -242,6 +274,7 @@ class SettingsScreen extends StatelessWidget {
                       prefs.copyWith(useSimplifiedChinese: value),
                     );
                   },
+                  colors: colors,
                 ),
               ],
             );
@@ -258,6 +291,7 @@ class SettingsScreen extends StatelessWidget {
     required String subtitle,
     required bool value,
     required ValueChanged<bool> onChanged,
+    required AppColorScheme colors,
   }) {
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: AppDimensions.sm),
@@ -266,7 +300,7 @@ class SettingsScreen extends StatelessWidget {
         children: [
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Icon(icon, color: AppColors.textSecondary, size: 24),
+            child: Icon(icon, color: colors.textSecondary, size: 24),
           ),
           const SizedBox(width: AppDimensions.md),
           Expanded(
@@ -274,12 +308,15 @@ class SettingsScreen extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(title, style: AppTextStyles.body),
+                Text(
+                  title,
+                  style: AppTextStyles.body.copyWith(color: colors.textPrimary),
+                ),
                 const SizedBox(height: 2),
                 Text(
                   subtitle,
                   style: AppTextStyles.caption.copyWith(
-                    color: AppColors.textSecondary,
+                    color: colors.textSecondary,
                   ),
                   maxLines: 3,
                   overflow: TextOverflow.visible,
@@ -294,7 +331,6 @@ class SettingsScreen extends StatelessWidget {
             child: Switch(
               value: value,
               onChanged: onChanged,
-              activeThumbColor: AppColors.primaryBlue,
             ),
           ),
         ],
@@ -303,21 +339,30 @@ class SettingsScreen extends StatelessWidget {
   }
 
   /// Build about card
-  Widget _buildAboutCard(BuildContext context) {
+  Widget _buildAboutCard(BuildContext context, AppColorScheme colors) {
     final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        side: colors.isHighContrast
+            ? BorderSide(color: colors.border, width: 2)
+            : BorderSide.none,
       ),
       child: Padding(
         padding: const EdgeInsets.all(AppDimensions.md),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(l10n.aboutAssistify, style: AppTextStyles.bodyLarge),
+            Text(
+              l10n.aboutAssistify,
+              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+            ),
             const SizedBox(height: AppDimensions.xs),
-            Text(l10n.version('1.0.0'), style: AppTextStyles.caption),
+            Text(
+              l10n.version('1.0.0'),
+              style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
+            ),
             const SizedBox(height: AppDimensions.md),
 
             // Privacy Policy
@@ -330,9 +375,10 @@ class SettingsScreen extends StatelessWidget {
                   SnackBar(content: Text(l10n.comingSoon(l10n.privacyPolicy))),
                 );
               },
+              colors: colors,
             ),
 
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: colors.divider, height: 1),
 
             // Terms of Service
             _buildLinkItem(
@@ -346,9 +392,10 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 );
               },
+              colors: colors,
             ),
 
-            const Divider(color: AppColors.divider, height: 1),
+            Divider(color: colors.divider, height: 1),
 
             // Send Feedback
             _buildLinkItem(
@@ -360,6 +407,7 @@ class SettingsScreen extends StatelessWidget {
                   SnackBar(content: Text(l10n.comingSoon(l10n.sendFeedback))),
                 );
               },
+              colors: colors,
             ),
           ],
         ),
@@ -372,6 +420,7 @@ class SettingsScreen extends StatelessWidget {
     required IconData icon,
     required String title,
     required VoidCallback onTap,
+    required AppColorScheme colors,
   }) {
     return InkWell(
       onTap: onTap,
@@ -379,12 +428,17 @@ class SettingsScreen extends StatelessWidget {
         padding: const EdgeInsets.symmetric(vertical: AppDimensions.sm),
         child: Row(
           children: [
-            Icon(icon, color: AppColors.textSecondary, size: 24),
+            Icon(icon, color: colors.textSecondary, size: 24),
             const SizedBox(width: AppDimensions.md),
-            Expanded(child: Text(title, style: AppTextStyles.body)),
-            const Icon(
+            Expanded(
+              child: Text(
+                title,
+                style: AppTextStyles.body.copyWith(color: colors.textPrimary),
+              ),
+            ),
+            Icon(
               Icons.chevron_right,
-              color: AppColors.textSecondary,
+              color: colors.textSecondary,
               size: 24,
             ),
           ],
