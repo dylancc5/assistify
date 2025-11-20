@@ -62,6 +62,10 @@ class AppStateProvider extends ChangeNotifier {
   String? _geminiResponse;
   bool _isGeminiLoading = false;
 
+  // Typewriter animation
+  Timer? _typewriterTimer;
+  int _displayedResponseLength = 0;
+
   // Enhanced voice prompt tracking
   bool _shouldPromptForEnhancedVoice = false;
   String _missingVoiceName = '';
@@ -99,6 +103,15 @@ class AppStateProvider extends ChangeNotifier {
   List<ScreenRecording> get screenRecordings => _screenRecordings;
   String? get geminiResponse => _geminiResponse;
   bool get isGeminiLoading => _isGeminiLoading;
+
+  /// Get the displayed portion of the response (for typewriter effect)
+  String? get displayedGeminiResponse {
+    if (_geminiResponse == null) return null;
+    if (_displayedResponseLength >= _geminiResponse!.length) {
+      return _geminiResponse;
+    }
+    return _geminiResponse!.substring(0, _displayedResponseLength);
+  }
 
   /// Initialize app state from storage
   Future<void> initialize() async {
@@ -399,18 +412,41 @@ class AppStateProvider extends ChangeNotifier {
     }
   }
 
+  /// Start typewriter animation for response
+  void _startTypewriterAnimation() {
+    _typewriterTimer?.cancel();
+    _displayedResponseLength = 0;
+
+    if (_geminiResponse == null || _geminiResponse!.isEmpty) return;
+
+    // Animate at ~40 characters per second
+    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 25), (timer) {
+      if (_geminiResponse == null || _displayedResponseLength >= _geminiResponse!.length) {
+        timer.cancel();
+        return;
+      }
+      _displayedResponseLength += 1;
+      notifyListeners();
+    });
+  }
+
   /// Send message to Gemini and update response
   /// This runs asynchronously without blocking the speech recognition
   void _sendToGemini(String message) {
     if (!_geminiService.isInitialized) return;
 
     _isGeminiLoading = true;
+    _typewriterTimer?.cancel();
+    _displayedResponseLength = 0;
     notifyListeners();
 
     // Run async without awaiting - allows speech recognition to continue
     _geminiService.sendMessage(message).then((response) async {
       _geminiResponse = response;
       _isGeminiLoading = false;
+
+      // Start typewriter animation
+      _startTypewriterAnimation();
 
       // Add Gemini response as a message in the conversation
       if (response != null && response.isNotEmpty) {
@@ -530,6 +566,8 @@ class AppStateProvider extends ChangeNotifier {
     // Reset Gemini response and chat session
     _geminiResponse = null;
     _isGeminiLoading = false;
+    _typewriterTimer?.cancel();
+    _displayedResponseLength = 0;
     _geminiService.resetChat();
 
     _isChatActive = false;
@@ -731,6 +769,7 @@ class AppStateProvider extends ChangeNotifier {
   void dispose() {
     _audioLevelSubscription?.cancel();
     _speechEventSubscription?.cancel();
+    _typewriterTimer?.cancel();
     _recordingService.dispose();
     _speechService.dispose();
     _ttsService.dispose();

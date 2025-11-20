@@ -196,7 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 colors: colors,
               ),
               const SizedBox(height: AppDimensions.md),
-              // Gemini response display
+              // Gemini response display with smooth animated size transition
               if (appState.isGeminiLoading)
                 Padding(
                   padding: const EdgeInsets.symmetric(
@@ -210,29 +210,34 @@ class _HomeScreenState extends State<HomeScreen> {
                     textAlign: TextAlign.center,
                   ),
                 )
-              else if (appState.geminiResponse != null)
+              else if (appState.displayedGeminiResponse != null)
                 Expanded(
                   child: SingleChildScrollView(
                     padding: const EdgeInsets.symmetric(
                       horizontal: AppDimensions.lg,
                     ),
-                    child: Container(
-                      padding: const EdgeInsets.all(AppDimensions.md),
-                      decoration: BoxDecoration(
-                        color: colors.cardBackground.withValues(alpha: 0.9),
-                        borderRadius: BorderRadius.circular(
-                          AppDimensions.borderRadiusMedium,
+                    child: AnimatedSize(
+                      duration: const Duration(milliseconds: 150),
+                      curve: Curves.easeOutCubic,
+                      alignment: Alignment.topCenter,
+                      child: Container(
+                        padding: const EdgeInsets.all(AppDimensions.md),
+                        decoration: BoxDecoration(
+                          color: colors.cardBackground.withValues(alpha: 0.9),
+                          borderRadius: BorderRadius.circular(
+                            AppDimensions.borderRadiusMedium,
+                          ),
+                          border: colors.isHighContrast
+                              ? Border.all(color: colors.border, width: 2)
+                              : null,
                         ),
-                        border: colors.isHighContrast
-                            ? Border.all(color: colors.border, width: 2)
-                            : null,
-                      ),
-                      child: Text(
-                        appState.geminiResponse!,
-                        style: AppTextStyles.body.copyWith(
-                          color: colors.textPrimary,
+                        child: Text(
+                          appState.displayedGeminiResponse!,
+                          style: AppTextStyles.body.copyWith(
+                            color: colors.textPrimary,
+                          ),
+                          textAlign: TextAlign.center,
                         ),
-                        textAlign: TextAlign.center,
                       ),
                     ),
                   ),
