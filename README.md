@@ -231,48 +231,6 @@ Reduces dependence on family members or caregivers for basic digital tasks, pres
 
 ---
 
-## Our Vision for Impact
-
-### Promoting Digital Inclusion
-
-We envision a world where age is not a barrier to digital participation. Assistify aims to:
-
-- **Bridge the generational technology gap** by making smartphones as accessible to seniors as they are to digital natives
-- **Reduce social isolation** by enabling elderly users to communicate confidently with family and friends
-- **Enhance quality of life** by providing access to essential services like healthcare, banking, and transportation
-- **Foster lifelong learning** by creating safe, supportive environments for exploring new technologies
-
-### Measurable Outcomes We Aim For
-
-**Task Completion Improvement**
-
-- ≥30% improvement in task completion speed for common smartphone activities
-- ≥40% reduction in navigation errors and misclicks
-- ≥25% higher satisfaction and confidence scores compared to standard accessibility modes
-
-**Safety Enhancement**
-
-- Scam detection accuracy (F1 score) ≥ 0.85
-- Measurable reduction in elderly users falling victim to digital fraud
-- Increased awareness of digital safety practices
-
-**Independence & Confidence**
-
-- 80%+ positive user satisfaction ratings
-- Reduced reliance on family members for digital assistance
-- Increased willingness to try new apps and features independently
-
-### Alignment with "AI for Good"
-
-Assistify embodies the principle of technology serving humanity. This project demonstrates how advanced AI can:
-
-- **Empower vulnerable populations** rather than replace human connection
-- **Enhance human capability** without diminishing dignity
-- **Create inclusive technology** that serves diverse needs and abilities
-- **Build trust in AI** through transparent, explainable, and safe interactions
-
----
-
 ## Why This Matters
 
 ### The Demographic Reality
@@ -297,18 +255,6 @@ Assistify represents a commitment to using these capabilities for profound socia
 
 ---
 
-## Our North Star
-
-**Every senior deserves to navigate the digital world with the same confidence, safety, and independence they've enjoyed throughout their lives.**
-
-Assistify isn't just about helping elderly users tap the right buttons—it's about restoring their autonomy, protecting their security, and ensuring they remain connected to the people and services that matter most.
-
-We're building a future where technology adapts to people, not the other way around. Where aging doesn't mean digital exclusion. Where every grandparent can video call their grandchildren, manage their healthcare, and explore new horizons without fear or frustration.
-
-This is Assistify: **Your intelligent companion for confident, safe, and independent smartphone use.**
-
----
-
 ## Beyond Seniors: A Platform for Universal Accessibility
 
 While our initial focus is elderly users, Assistify's core capabilities have potential to serve:
@@ -320,6 +266,607 @@ While our initial focus is elderly users, Assistify's core capabilities have pot
 - **Users in high-stress situations** who need clear guidance under pressure
 
 Assistify represents a new paradigm: **Contextually aware, multimodal AI assistance that meets users wherever they are.**
+
+---
+
+## Technical Documentation
+
+### Project Structure Overview
+
+The Assistify Flutter application follows a clean, modular architecture organized by feature and responsibility. This section provides a comprehensive guide to the codebase structure, making it easy for developers and AI agents to understand where to find and modify code.
+
+```
+lib/
+├── main.dart                    # App entry point and initialization
+├── constants/                   # Design system constants
+│   ├── colors.dart            # Color palette and theme colors
+│   ├── dimensions.dart        # Spacing, sizes, and responsive utilities
+│   └── text_styles.dart       # Typography system
+├── models/                     # Data models and business logic
+│   ├── conversation.dart      # Conversation history model
+│   ├── message.dart           # Individual message/speech segment model
+│   ├── preferences.dart       # User preferences model
+│   └── screen_recording.dart  # Screen recording metadata model
+├── providers/                  # State management (Provider pattern)
+│   └── app_state_provider.dart # Central app state provider
+├── screens/                    # Full-screen UI components
+│   ├── home_screen.dart       # Main home screen with voice agent
+│   ├── settings_screen.dart   # Settings and preferences screen
+│   ├── history_screen.dart    # Conversation history screen
+│   └── screen_recording_history_screen.dart # Screen recording history
+├── services/                   # Business logic and platform integration
+│   ├── permission_service.dart # Permission handling (mic, screen recording)
+│   ├── recording_service.dart  # Screen recording via platform channels
+│   ├── speech_service.dart     # Speech recognition via platform channels
+│   └── storage_service.dart    # Local data persistence (SharedPreferences)
+├── utils/                      # Utility functions and helpers
+│   └── localization_helper.dart # Localization utilities
+├── widgets/                    # Reusable UI components
+│   ├── voice_agent_circle.dart # Animated voice agent circle widget
+│   ├── control_button.dart    # Control button component
+│   ├── onboarding_flow.dart   # Onboarding permission flow
+│   ├── permission_modal.dart  # Permission request modal
+│   └── screen_recording_card.dart # Screen recording card widget
+└── l10n/                       # Localization files
+    ├── app_en.arb             # English translations
+    ├── app_zh.arb             # Chinese translations
+    └── app_localizations*.dart # Generated localization code
+```
+
+### Architecture Patterns
+
+#### State Management: Provider Pattern
+The app uses the **Provider** package for state management. All app state is centralized in `AppStateProvider` (`lib/providers/app_state_provider.dart`), which:
+- Manages UI state (chat active, recording active, microphone muted)
+- Handles permission states
+- Stores user preferences
+- Manages conversation and recording history
+- Coordinates between services
+
+**Key Pattern**: The `AppStateProvider` acts as the single source of truth. Services handle platform-specific operations, while the provider manages the app's reactive state.
+
+#### Service Layer Pattern
+Services encapsulate platform-specific functionality and business logic:
+- **PermissionService**: Handles permission requests using `permission_handler`
+- **RecordingService**: Manages screen recording via platform channels (iOS ReplayKit)
+- **SpeechService**: Handles speech recognition via platform channels (iOS SFSpeechRecognizer)
+- **StorageService**: Manages local persistence using SharedPreferences
+
+**Key Pattern**: Services are injected into `AppStateProvider` via constructor injection, allowing for easy testing and mocking.
+
+#### Model Layer
+Data models are immutable and include:
+- JSON serialization/deserialization
+- Helper methods for formatting (dates, durations, file sizes)
+- Business logic related to the data structure
+
+### Detailed Component Guide
+
+#### Entry Point: `lib/main.dart`
+**Purpose**: Application initialization and root widget setup
+
+**Key Components**:
+- `AssistifyApp`: Root MaterialApp widget with theme configuration
+- `AppInitializer`: Handles app initialization and onboarding flow
+- Sets up Provider, localization, and text scaling based on preferences
+
+**When to Modify**:
+- Adding new app-wide configuration
+- Changing theme or Material Design settings
+- Modifying initialization flow
+
+#### State Management: `lib/providers/app_state_provider.dart`
+**Purpose**: Central state management hub
+
+**Key Responsibilities**:
+- Permission state management (screen recording, microphone, speech)
+- Chat session lifecycle (start, mute/unmute, end)
+- Screen recording lifecycle (start, stop)
+- User preferences management
+- Conversation and recording history management
+- Audio level monitoring from speech service
+
+**Key Methods**:
+- `initialize()`: Loads state from storage on app start
+- `startChat()`: Begins a chat session with speech recognition
+- `endChat()`: Ends chat and saves conversation to history
+- `toggleScreenRecording()`: Starts/stops screen recording
+- `updatePreferences()`: Updates user preferences and restarts services if needed
+
+**When to Modify**:
+- Adding new app state
+- Changing state management logic
+- Adding new user actions
+
+#### Services Layer
+
+##### `lib/services/permission_service.dart`
+**Purpose**: Platform-agnostic permission handling
+
+**Key Features**:
+- Microphone permission checking and requesting
+- Screen recording permission (iOS ReplayKit handles natively)
+- Permission state mapping to app's enum
+- Settings app navigation for permanently denied permissions
+
+**When to Modify**:
+- Adding new permission types
+- Changing permission request flow
+- Platform-specific permission handling
+
+##### `lib/services/recording_service.dart`
+**Purpose**: Screen recording via platform channels
+
+**Platform Channels**:
+- Method Channel: `com.assistify/screen_recording`
+- Methods: `startRecording`, `stopRecording`, `isAvailable`, `isRecording`
+
+**Key Features**:
+- iOS: Uses ReplayKit for screen recording
+- Android: MediaProjection (to be implemented)
+- Returns recording metadata (file path, duration, file size)
+
+**When to Modify**:
+- Adding new recording features
+- Implementing Android support
+- Changing recording format or quality
+
+##### `lib/services/speech_service.dart`
+**Purpose**: Speech recognition via platform channels
+
+**Platform Channels**:
+- Method Channel: `com.assistify/speech_recognition`
+- Event Channel: `com.assistify/audio_levels` (real-time audio levels)
+- Event Channel: `com.assistify/speech_events` (speech recognition events)
+
+**Key Features**:
+- iOS: Uses SFSpeechRecognizer
+- Real-time audio level streaming
+- Speech event streaming (segment completion on silence)
+- Multi-language support (en-US, zh-Hans)
+
+**When to Modify**:
+- Adding new speech recognition features
+- Changing language support
+- Modifying audio level processing
+
+##### `lib/services/storage_service.dart`
+**Purpose**: Local data persistence
+
+**Storage Keys**:
+- `onboarding_complete`: Boolean flag
+- `screen_recording_permission`: Boolean flag
+- `microphone_permission`: Boolean flag
+- `user_preferences`: JSON string
+- `conversations`: JSON array
+- `screen_recordings`: JSON array
+
+**When to Modify**:
+- Adding new stored data types
+- Changing storage format
+- Migrating data structures
+
+#### Models Layer
+
+##### `lib/models/preferences.dart`
+**Purpose**: User preferences model
+
+**Properties**:
+- `largeTextEnabled`: Increases text size (1.2x scale)
+- `slowerSpeechEnabled`: Reduces speech speed (future feature)
+- `highContrastEnabled`: Increases contrast (future feature)
+- `useSimplifiedChinese`: Switches language to Simplified Chinese
+
+**Computed Properties**:
+- `textScaleFactor`: Returns 1.2 if large text enabled, else 1.0
+- `languageCode`: Returns 'zh-Hans' for Chinese, 'en-US' for English
+
+**When to Modify**:
+- Adding new preference options
+- Changing preference behavior
+
+##### `lib/models/conversation.dart`
+**Purpose**: Conversation history model
+
+**Properties**:
+- `id`: Unique identifier
+- `timestamp`: When conversation started
+- `previewText`: First 100 characters for list view
+- `duration`: Conversation length
+- `fullTranscript`: Complete transcript (optional)
+- `messages`: List of individual speech segments
+
+**Helper Methods**:
+- `formattedDateTime`: Human-readable date/time
+- `formattedDuration`: "X min Y sec" format
+
+**When to Modify**:
+- Adding new conversation metadata
+- Changing conversation structure
+
+##### `lib/models/message.dart`
+**Purpose**: Individual speech segment model
+
+**Properties**:
+- `id`: Unique identifier
+- `text`: Speech transcript
+- `timestamp`: When message was captured
+
+**When to Modify**:
+- Adding message metadata (e.g., confidence scores)
+- Changing message structure
+
+##### `lib/models/screen_recording.dart`
+**Purpose**: Screen recording metadata model
+
+**Properties**:
+- `id`: Unique identifier
+- `filePath`: Path to video file
+- `timestamp`: When recording was created
+- `duration`: Recording length
+- `fileSize`: File size in bytes
+
+**Helper Methods**:
+- `formattedSize`: Human-readable file size (KB, MB)
+- `formattedDuration`: "MM:SS" format
+
+**When to Modify**:
+- Adding recording metadata
+- Changing recording structure
+
+#### Screens Layer
+
+##### `lib/screens/home_screen.dart`
+**Purpose**: Main application screen
+
+**Layout Structure**:
+- App Bar: Title and settings button
+- Voice Agent Section (75%): Animated voice agent circle with gradient background
+- Control Section (25%): Three control buttons (Chat, Microphone, Screen Recording)
+
+**Key Features**:
+- Responsive sizing based on screen width
+- Real-time audio level visualization
+- State-driven UI updates via Consumer
+
+**When to Modify**:
+- Changing home screen layout
+- Adding new controls
+- Modifying voice agent display
+
+##### `lib/screens/settings_screen.dart`
+**Purpose**: Settings and preferences screen
+
+**Sections**:
+- Conversation History: Link to history screen
+- Screen Recording History: Link to recording history
+- Preferences: Toggle switches for all user preferences
+- About: App info and links (privacy, terms, feedback)
+
+**When to Modify**:
+- Adding new settings options
+- Changing settings UI
+- Adding new navigation links
+
+##### `lib/screens/history_screen.dart`
+**Purpose**: Conversation history display
+
+**Features**:
+- List of past conversations
+- Empty state when no conversations
+- Tap to view conversation detail
+- Long press to delete conversation
+- Conversation detail screen with message bubbles
+
+**When to Modify**:
+- Changing history display format
+- Adding conversation filtering/search
+- Modifying conversation detail view
+
+##### `lib/screens/screen_recording_history_screen.dart`
+**Purpose**: Screen recording history display
+
+**Features**:
+- List of past recordings
+- Empty state when no recordings
+- Uses `ScreenRecordingCard` widget for each item
+
+**When to Modify**:
+- Changing recording display format
+- Adding recording filtering/search
+
+#### Widgets Layer
+
+##### `lib/widgets/voice_agent_circle.dart`
+**Purpose**: Animated voice agent circle with breathing and audio-reactive effects
+
+**Animations**:
+- Breathing animation: Continuous subtle scale pulsing
+- Activation animation: Color transition, rotation, and scale on chat start
+- Audio-reactive: Scale and color intensity based on audio levels
+- Ripple rings: Outer rings that pulse with audio
+
+**States**:
+- Resting: Grey colors, subtle breathing
+- Active: Blue colors, enhanced animations, audio-reactive
+
+**When to Modify**:
+- Changing animation behavior
+- Modifying visual appearance
+- Adding new animation states
+
+##### `lib/widgets/control_button.dart`
+**Purpose**: Reusable control button with icon and label
+
+**Features**:
+- Circular button with icon
+- Label text below
+- Pulse animation for active states
+- Press feedback with scale animation
+- Haptic feedback on tap
+
+**When to Modify**:
+- Changing button appearance
+- Adding new button states
+- Modifying animations
+
+##### `lib/widgets/onboarding_flow.dart`
+**Purpose**: First-time user onboarding flow
+
+**Flow Steps**:
+1. Screen Recording Permission: Explains why screen access is needed
+2. Microphone Permission: Explains why microphone access is needed
+3. Success Confirmation: Confirms setup completion
+
+**Features**:
+- Sequential permission requests
+- Handles permanently denied permissions
+- Shows error dialogs if permissions denied
+
+**When to Modify**:
+- Adding new onboarding steps
+- Changing permission request order
+- Modifying onboarding UI
+
+##### `lib/widgets/permission_modal.dart`
+**Purpose**: Reusable permission request modal
+
+**Features**:
+- Customizable icon, title, description
+- Animated appearance (fade + scale)
+- Non-dismissible (must interact with button)
+
+**When to Modify**:
+- Changing modal appearance
+- Adding new modal types
+
+##### `lib/widgets/screen_recording_card.dart`
+**Purpose**: Card widget for displaying screen recordings
+
+**Features**:
+- Video player with play/pause
+- Recording metadata (date, duration, file size)
+- Delete button with confirmation
+- Lazy video initialization (only loads when played)
+
+**When to Modify**:
+- Changing recording display format
+- Adding new actions
+- Modifying video player behavior
+
+#### Constants Layer
+
+##### `lib/constants/colors.dart`
+**Purpose**: Design system color palette
+
+**Color Categories**:
+- Primary Colors: Blue, coral, grey, green
+- Neutral Colors: Background, card, text colors
+- Interactive States: Button colors, hover, disabled
+- Gradient Colors: Voice agent section gradients
+- Voice Agent Colors: Active and inactive states
+
+**When to Modify**:
+- Changing app color scheme
+- Adding new color variants
+
+##### `lib/constants/dimensions.dart`
+**Purpose**: Spacing, sizing, and responsive utilities
+
+**Categories**:
+- Spacing System: xs, sm, md, lg, xl, xxl (multiples of 8)
+- Border Radius: Small to XLarge
+- Component Sizes: Voice agent circle, control buttons
+- Responsive Utilities: Functions that adjust sizes based on screen width
+
+**Key Methods**:
+- `getVoiceAgentCircleSize()`: Responsive circle size
+- `getControlButtonSize()`: Responsive button size
+- `getPaddingMultiplier()`: Responsive padding multiplier
+
+**When to Modify**:
+- Changing spacing system
+- Adjusting component sizes
+- Modifying responsive breakpoints
+
+##### `lib/constants/text_styles.dart`
+**Purpose**: Typography system
+
+**Text Styles**:
+- `appTitle`: 28px, semibold
+- `heading`: 24px, semibold
+- `bodyLarge`: 20px, regular
+- `body`: 18px, regular
+- `buttonLabel`: 16px, medium
+- `caption`: 14px, regular
+
+**Features**:
+- Consistent font family (Roboto)
+- Text scaling utility method
+
+**When to Modify**:
+- Changing typography scale
+- Adding new text styles
+- Modifying font family
+
+#### Utilities Layer
+
+##### `lib/utils/localization_helper.dart`
+**Purpose**: Localization utilities
+
+**Features**:
+- Supported locales: English (en), Chinese (zh)
+- Localization delegates setup
+- Helper to get locale from preferences
+- Helper to get AppLocalizations from context
+
+**When to Modify**:
+- Adding new languages
+- Changing locale detection logic
+
+### Data Flow Patterns
+
+#### Starting a Chat Session
+1. User taps "Start Chat" button in `HomeScreen`
+2. `AppStateProvider.startChat()` is called
+3. Checks microphone permission via `PermissionService`
+4. Checks speech recognition permission via `SpeechService`
+5. Starts speech recognition via `SpeechService.startListening()`
+6. Subscribes to audio level stream for visualization
+7. Subscribes to speech event stream for segment completion
+8. Updates UI state (`isChatActive = true`)
+
+#### Ending a Chat Session
+1. User taps "End Chat" button
+2. `AppStateProvider.endChat()` is called
+3. Stops speech recognition and gets final transcript
+4. Creates `Conversation` model with all messages
+5. Saves conversation via `StorageService`
+6. Reloads conversations list
+7. Resets UI state (`isChatActive = false`)
+
+#### Screen Recording Flow
+1. User taps "Share Screen" button
+2. `AppStateProvider.toggleScreenRecording()` is called
+3. Checks screen recording permission (from storage)
+4. If not granted, shows permission modal
+5. Calls `RecordingService.startRecording()` via platform channel
+6. iOS ReplayKit shows system permission dialog (first time)
+7. Recording starts, updates UI state
+8. On stop, saves recording metadata to storage
+
+#### Preference Updates
+1. User toggles preference in `SettingsScreen`
+2. `AppStateProvider.updatePreferences()` is called
+3. Saves preferences via `StorageService`
+4. If language changed and chat is active, restarts speech recognition
+5. Notifies listeners to update UI
+
+### Finding Code for Common Tasks
+
+#### Adding a New Feature
+1. **UI Changes**: Look in `lib/screens/` or `lib/widgets/`
+2. **State Management**: Add to `AppStateProvider` in `lib/providers/`
+3. **Business Logic**: Create or modify service in `lib/services/`
+4. **Data Models**: Add or modify models in `lib/models/`
+5. **Storage**: Add methods to `StorageService` in `lib/services/`
+
+#### Modifying Permissions
+1. **Permission Logic**: `lib/services/permission_service.dart`
+2. **Permission UI**: `lib/widgets/permission_modal.dart`
+3. **Onboarding**: `lib/widgets/onboarding_flow.dart`
+4. **State Management**: `AppStateProvider` permission methods
+
+#### Changing Visual Design
+1. **Colors**: `lib/constants/colors.dart`
+2. **Spacing/Sizes**: `lib/constants/dimensions.dart`
+3. **Typography**: `lib/constants/text_styles.dart`
+4. **Theme**: `lib/main.dart` (MaterialApp theme)
+
+#### Adding New Screen
+1. Create new file in `lib/screens/`
+2. Follow pattern from existing screens (Scaffold, AppBar, Consumer)
+3. Add navigation from appropriate screen
+4. Use constants for styling (colors, dimensions, text styles)
+
+#### Adding Platform-Specific Code
+1. **iOS**: `ios/Runner/` directory (Swift/Objective-C)
+2. **Android**: `android/app/src/main/` directory (Kotlin/Java)
+3. **Platform Channels**: Define in native code, call from `lib/services/`
+4. **Method Channels**: Use `MethodChannel` in Dart services
+5. **Event Channels**: Use `EventChannel` for streams
+
+#### Modifying Localization
+1. **Translation Files**: `lib/l10n/app_en.arb` and `lib/l10n/app_zh.arb`
+2. **Generated Code**: `lib/l10n/app_localizations*.dart` (auto-generated)
+3. **Usage**: `LocalizationHelper.of(context).keyName`
+4. **Regenerate**: Run `flutter gen-l10n` after modifying ARB files
+
+### Testing Strategy
+
+#### Unit Testing
+- Test models: JSON serialization, helper methods
+- Test services: Mock platform channels, test business logic
+- Test providers: Mock services, test state transitions
+
+#### Widget Testing
+- Test individual widgets in isolation
+- Test widget interactions and state changes
+- Test responsive behavior
+
+#### Integration Testing
+- Test complete user flows (chat start → end → save)
+- Test permission flows
+- Test navigation between screens
+
+### Development Workflow
+
+#### Adding a New Feature
+1. **Plan**: Identify which layers need changes (UI, state, service, model)
+2. **Model First**: Create or modify data models if needed
+3. **Service Layer**: Add business logic to appropriate service
+4. **State Management**: Add state and methods to `AppStateProvider`
+5. **UI Layer**: Create or modify screens/widgets
+6. **Storage**: Add persistence if needed
+7. **Localization**: Add strings to ARB files
+8. **Test**: Write tests for new functionality
+
+#### Debugging Tips
+- **State Issues**: Check `AppStateProvider` and service subscriptions
+- **Permission Issues**: Check `PermissionService` and platform-specific code
+- **UI Issues**: Check widget rebuilds and Consumer usage
+- **Platform Channel Issues**: Check native code and channel names match
+
+### Key Dependencies
+
+- **provider**: State management
+- **shared_preferences**: Local storage
+- **permission_handler**: Permission management
+- **video_player**: Video playback for recordings
+- **intl**: Date/time formatting
+- **audioplayers**: Audio playback (future feature)
+- **flutter_localizations**: Localization support
+
+### Platform-Specific Notes
+
+#### iOS
+- Screen Recording: Uses ReplayKit (permission dialog appears on first use)
+- Speech Recognition: Uses SFSpeechRecognizer
+- Platform Channels: Defined in `ios/Runner/AppDelegate.swift`
+
+#### Android
+- Screen Recording: MediaProjection (to be implemented)
+- Speech Recognition: To be implemented
+- Platform Channels: Defined in `android/app/src/main/` Kotlin files
+
+### Code Style Guidelines
+
+- **Naming**: Use descriptive names, follow Dart conventions
+- **Imports**: Group imports (dart, package, relative)
+- **Comments**: Document public APIs and complex logic
+- **Formatting**: Use `dart format` before committing
+- **Widgets**: Extract reusable widgets to `lib/widgets/`
+- **Constants**: Use constants from `lib/constants/` instead of magic numbers
 
 ---
 
