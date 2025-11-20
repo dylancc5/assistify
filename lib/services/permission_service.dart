@@ -17,10 +17,20 @@ class PermissionService {
 
   /// Request microphone permission
   Future<PermissionState> requestMicrophonePermission() async {
-    // Directly request the permission - this will show the system dialog on iOS
-    // if the permission hasn't been asked yet
-    final status = await permission_handler.Permission.microphone.request();
-    return _mapPermissionStatus(status);
+    try {
+      // Check current permission status first
+      var status = await permission_handler.Permission.microphone.status;
+
+      // If not granted, request permission
+      if (!status.isGranted) {
+        status = await permission_handler.Permission.microphone.request();
+      }
+
+      return _mapPermissionStatus(status);
+    } catch (e) {
+      // Return denied on error
+      return PermissionState.denied;
+    }
   }
 
   /// Check if microphone permission is granted
@@ -68,6 +78,12 @@ class PermissionService {
     }
   }
   
+  /// Check if microphone permission is permanently denied
+  Future<bool> isMicrophonePermanentlyDenied() async {
+    final status = await permission_handler.Permission.microphone.status;
+    return status.isPermanentlyDenied;
+  }
+
   /// Check if we should show the request rationale (user denied once before)
   Future<bool> shouldShowRequestRationale() async {
     final status = await permission_handler.Permission.microphone.status;

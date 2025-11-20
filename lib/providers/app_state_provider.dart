@@ -112,6 +112,16 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Check if microphone permission is permanently denied
+  Future<bool> isMicrophonePermanentlyDenied() async {
+    return await _permissionService.isMicrophonePermanentlyDenied();
+  }
+
+  /// Open app settings
+  Future<void> openAppSettings() async {
+    await _permissionService.openAppSettings();
+  }
+
   /// Complete onboarding
   Future<void> completeOnboarding() async {
     _hasCompletedOnboarding = true;
@@ -243,35 +253,48 @@ class AppStateProvider extends ChangeNotifier {
     final completer = Completer<void>();
     bool permissionRequested = false;
 
+    // Check if permission is permanently denied
+    final isPermanentlyDenied = await isMicrophonePermanentlyDenied();
+
     await PermissionModal.show(
       context: context,
       icon: Icons.mic,
       iconColor: AppColors.primaryBlue,
       title: 'Assistify needs microphone access',
-      description: 'This allows me to hear your questions and respond to you',
-      buttonText: 'Allow Microphone',
+      description: isPermanentlyDenied
+          ? 'Microphone permission is permanently denied.\nPlease enable in settings.'
+          : 'This allows me to hear your questions and respond to you',
+      buttonText: isPermanentlyDenied ? 'OPEN SETTINGS' : 'Allow Microphone',
       buttonColor: AppColors.primaryBlue,
       onButtonPressed: () async {
         if (permissionRequested) return;
         permissionRequested = true;
 
-        // Request permission FIRST - this will show the system dialog on iOS
-        // The system dialog will appear on top of our modal
-        await requestMicrophonePermission();
-        
-        // Wait a moment for the system dialog to appear
-        await Future.delayed(const Duration(milliseconds: 100));
-        
-        // Now dismiss our modal (system dialog is already showing on top)
-        if (context.mounted) {
-          PermissionModal.dismiss(context);
+        if (isPermanentlyDenied) {
+          // Open app settings
+          await openAppSettings();
+          if (context.mounted) {
+            PermissionModal.dismiss(context);
+          }
+        } else {
+          // Request permission FIRST - this will show the system dialog on iOS
+          // The system dialog will appear on top of our modal
+          await requestMicrophonePermission();
+          
+          // Wait a moment for the system dialog to appear
+          await Future.delayed(const Duration(milliseconds: 100));
+          
+          // Now dismiss our modal (system dialog is already showing on top)
+          if (context.mounted) {
+            PermissionModal.dismiss(context);
+          }
+          
+          // Wait for user to respond to system dialog
+          await Future.delayed(const Duration(milliseconds: 1000));
+          
+          // Refresh permission status after request
+          await refreshMicrophonePermission();
         }
-        
-        // Wait for user to respond to system dialog
-        await Future.delayed(const Duration(milliseconds: 1000));
-        
-        // Refresh permission status after request
-        await refreshMicrophonePermission();
 
         if (!completer.isCompleted) {
           completer.complete();
