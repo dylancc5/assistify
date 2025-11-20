@@ -59,7 +59,7 @@
   "openSettings": "打开设置",
   "allowMicrophone": "允许麦克风",
   "perfectYouAreReadyToGo": "完美！您已准备就绪。",
-  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "随时点击麦克风开始与我对话",
+  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "按\"开始对话\"开始与我对话",
   "getStarted": "开始使用",
   "permissionRequired": "需要权限",
   "screenRecordingPermissionIsRequired": "Assistify 需要屏幕录制权限才能正常工作。",

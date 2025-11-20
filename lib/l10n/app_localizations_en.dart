@@ -163,7 +163,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get tapTheMicrophoneAnytimeToStartTalkingWithMe =>
-      'Tap the microphone anytime to start talking with me';
+      'Press \"Start Chat\" to start talking with me';
 
   @override
   String get getStarted => 'Get Started';

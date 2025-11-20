@@ -151,7 +151,7 @@ class AppLocalizationsZh extends AppLocalizations {
   String get perfectYouAreReadyToGo => '完美！您已准备就绪。';
 
   @override
-  String get tapTheMicrophoneAnytimeToStartTalkingWithMe => '随时点击麦克风开始与我对话';
+  String get tapTheMicrophoneAnytimeToStartTalkingWithMe => '按\"开始对话\"开始与我对话';
 
   @override
   String get getStarted => '开始使用';

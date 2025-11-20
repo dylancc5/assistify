@@ -371,7 +371,7 @@ abstract class AppLocalizations {
   /// Onboarding success description
   ///
   /// In en, this message translates to:
-  /// **'Tap the microphone anytime to start talking with me'**
+  /// **'Press \"Start Chat\" to start talking with me'**
   String get tapTheMicrophoneAnytimeToStartTalkingWithMe;
 
   /// Get started button

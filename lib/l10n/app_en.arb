@@ -190,7 +190,7 @@
   "@perfectYouAreReadyToGo": {
     "description": "Onboarding success title"
   },
-  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "Tap the microphone anytime to start talking with me",
+  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "Press \"Start Chat\" to start talking with me",
   "@tapTheMicrophoneAnytimeToStartTalkingWithMe": {
     "description": "Onboarding success description"
   },
