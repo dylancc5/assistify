@@ -6,6 +6,7 @@ import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
 import '../widgets/voice_agent_circle.dart';
 import '../widgets/control_button.dart';
+import '../utils/localization_helper.dart';
 import 'settings_screen.dart';
 
 /// Main home screen with voice agent and controls
@@ -23,7 +24,7 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           children: [
             // App Bar
-            _buildAppBar(),
+            _buildAppBar(context),
 
             // Voice Agent Section (upper portion)
             Expanded(
@@ -43,14 +44,40 @@ class HomeScreen extends StatelessWidget {
   }
 
   /// Build app bar
-  Widget _buildAppBar() {
+  Widget _buildAppBar(BuildContext context) {
     return SizedBox(
       height: AppDimensions.appBarHeight,
-      child: Center(
-        child: Text(
-          'Assistify',
-          style: AppTextStyles.appTitle,
-        ),
+      child: Stack(
+        children: [
+          // Centered title
+          Center(
+            child: Text(
+              'Assistify',
+              style: AppTextStyles.appTitle,
+            ),
+          ),
+          // Settings button on the right
+          Positioned(
+            right: AppDimensions.md,
+            top: 0,
+            bottom: 0,
+            child: Center(
+              child: IconButton(
+                icon: const Icon(
+                  Icons.settings,
+                  color: AppColors.textSecondary,
+                ),
+                onPressed: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => const SettingsScreen(),
+                    ),
+                  );
+                },
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -71,7 +98,15 @@ class HomeScreen extends StatelessWidget {
         ),
       ),
       child: Center(
-        child: VoiceAgentCircle(size: circleSize),
+        child: Consumer<AppStateProvider>(
+          builder: (context, appState, child) {
+            return VoiceAgentCircle(
+              size: circleSize,
+              audioLevel: appState.audioLevel,
+              isActive: appState.isChatActive,
+            );
+          },
+        ),
       ),
     );
   }
@@ -93,7 +128,7 @@ class HomeScreen extends StatelessWidget {
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.1),
+            color: Colors.black.withValues(alpha: 0.1),
             blurRadius: 16,
             offset: const Offset(0, -4),
           ),
@@ -106,14 +141,37 @@ class HomeScreen extends StatelessWidget {
         ),
         child: Consumer<AppStateProvider>(
           builder: (context, appState, child) {
+            final l10n = LocalizationHelper.of(context);
             return Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // Start/End Chat Button
+                ControlButton(
+                  icon: appState.isChatActive
+                      ? Icons.stop_circle_outlined
+                      : Icons.chat_bubble_outline,
+                  label: appState.isChatActive ? l10n.endChat : l10n.startChat,
+                  backgroundColor: appState.isChatActive
+                      ? AppColors.accentCoral
+                      : AppColors.successGreen,
+                  labelColor: appState.isChatActive
+                      ? AppColors.accentCoral
+                      : AppColors.successGreen,
+                  onTap: () {
+                    if (appState.isChatActive) {
+                      appState.endChat();
+                    } else {
+                      appState.startChat(context);
+                    }
+                  },
+                  size: buttonSize,
+                ),
+
                 // Microphone Mute Button
                 ControlButton(
                   icon: appState.isMicrophoneMuted ? Icons.mic_off : Icons.mic,
-                  label: 'Microphone',
+                  label: l10n.microphone,
                   backgroundColor: appState.isMicrophoneMuted
                       ? AppColors.accentCoral
                       : AppColors.primaryBlue,
@@ -129,7 +187,7 @@ class HomeScreen extends StatelessWidget {
                   icon: appState.isScreenRecordingActive
                       ? Icons.videocam
                       : Icons.videocam_outlined,
-                  label: 'Screen Recording',
+                  label: l10n.shareScreen,
                   backgroundColor: appState.isScreenRecordingActive
                       ? AppColors.successGreen
                       : AppColors.buttonGray,
@@ -138,22 +196,6 @@ class HomeScreen extends StatelessWidget {
                       : AppColors.textSecondary,
                   onTap: () => appState.toggleScreenRecording(context),
                   showPulse: appState.isScreenRecordingActive,
-                  size: buttonSize,
-                ),
-
-                // Settings Button
-                ControlButton(
-                  icon: Icons.settings,
-                  label: 'Settings',
-                  backgroundColor: AppColors.buttonGray,
-                  labelColor: AppColors.textSecondary,
-                  onTap: () {
-                    Navigator.of(context).push(
-                      MaterialPageRoute(
-                        builder: (context) => const SettingsScreen(),
-                      ),
-                    );
-                  },
                   size: buttonSize,
                 ),
               ],

@@ -1,14 +1,16 @@
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import '../services/permission_service.dart';
 import '../services/recording_service.dart';
 import '../services/storage_service.dart';
+import '../services/speech_service.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
+import '../models/message.dart';
 import '../models/screen_recording.dart';
 import '../constants/colors.dart';
+import '../utils/localization_helper.dart';
 import '../widgets/permission_modal.dart';
 
 /// Voice agent states
@@ -19,15 +21,19 @@ class AppStateProvider extends ChangeNotifier {
   final PermissionService _permissionService;
   final RecordingService _recordingService;
   final StorageService _storageService;
+  final SpeechService _speechService;
 
   // Permission states
   PermissionState _screenRecordingPermission = PermissionState.notDetermined;
   PermissionState _microphonePermission = PermissionState.notDetermined;
+  PermissionState _speechPermission = PermissionState.notDetermined;
   bool _hasCompletedOnboarding = false;
 
   // UI states
   bool _isScreenRecordingActive = false;
-  bool _isMicrophoneMuted = false;
+  bool _isMicrophoneMuted = false; // Start unmuted by default
+  bool _isChatActive = false;
+  double _audioLevel = 0.0;
   final VoiceAgentState _voiceAgentState = VoiceAgentState.resting;
 
   // User preferences
@@ -39,20 +45,34 @@ class AppStateProvider extends ChangeNotifier {
   // Screen recording history
   List<ScreenRecording> _screenRecordings = [];
 
+  // Audio level stream subscription
+  StreamSubscription<double>? _audioLevelSubscription;
+  StreamSubscription<Map<String, dynamic>>? _speechEventSubscription;
+  DateTime? _chatStartTime;
+
+  // Message tracking
+  List<Message> _currentMessages = [];
+  DateTime? _currentMessageStartTime;
+
   AppStateProvider({
     PermissionService? permissionService,
     RecordingService? recordingService,
     StorageService? storageService,
+    SpeechService? speechService,
   }) : _permissionService = permissionService ?? PermissionService(),
        _recordingService = recordingService ?? RecordingService(),
-       _storageService = storageService ?? StorageService();
+       _storageService = storageService ?? StorageService(),
+       _speechService = speechService ?? SpeechService();
 
   // Getters
   PermissionState get screenRecordingPermission => _screenRecordingPermission;
   PermissionState get microphonePermission => _microphonePermission;
+  PermissionState get speechPermission => _speechPermission;
   bool get hasCompletedOnboarding => _hasCompletedOnboarding;
   bool get isScreenRecordingActive => _isScreenRecordingActive;
   bool get isMicrophoneMuted => _isMicrophoneMuted;
+  bool get isChatActive => _isChatActive;
+  double get audioLevel => _audioLevel;
   VoiceAgentState get voiceAgentState => _voiceAgentState;
   UserPreferences get preferences => _preferences;
   List<Conversation> get conversations => _conversations;
@@ -141,7 +161,9 @@ class AppStateProvider extends ChangeNotifier {
           id: DateTime.now().millisecondsSinceEpoch.toString(),
           filePath: recordingInfo['filePath'] as String,
           timestamp: DateTime.now(),
-          duration: Duration(milliseconds: recordingInfo['durationMs'] as int? ?? 0),
+          duration: Duration(
+            milliseconds: recordingInfo['durationMs'] as int? ?? 0,
+          ),
           fileSize: recordingInfo['fileSize'] as int? ?? 0,
         );
         await _storageService.addScreenRecording(recording);
@@ -174,7 +196,7 @@ class AppStateProvider extends ChangeNotifier {
               : PermissionState.denied;
         }
       }
-      
+
       // If still not granted, don't start recording
       if (_screenRecordingPermission != PermissionState.granted) {
         return;
@@ -186,27 +208,178 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Toggle microphone mute
+  /// Toggle microphone mute (only works when chat is active)
   Future<void> toggleMicrophoneMute(BuildContext? context) async {
-    // If trying to unmute, check permission first
+    // Only allow mute toggle when chat is active
+    if (!_isChatActive) {
+      return;
+    }
+
     if (_isMicrophoneMuted) {
-      // Refresh permission status first
-      await refreshMicrophonePermission();
-      
+      // Unmuting - restart speech recognition
+      final started = await _speechService.startListening(
+        languageCode: _preferences.languageCode,
+      );
+      if (started) {
+        _isMicrophoneMuted = false;
+        _currentMessageStartTime = DateTime.now();
+
+        // Listen to audio level stream
+        _audioLevelSubscription?.cancel();
+        _audioLevelSubscription = _speechService.audioLevelStream.listen((
+          level,
+        ) {
+          _audioLevel = level;
+          notifyListeners();
+        });
+      }
+    } else {
+      // Muting - stop speech recognition and get the transcript
+      final transcript = await _speechService.stopListening();
+
+      // Save the transcript as a message
+      if (transcript.isNotEmpty) {
+        final message = Message(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          text: transcript,
+          timestamp: _currentMessageStartTime ?? DateTime.now(),
+        );
+        _currentMessages.add(message);
+      }
+
+      _isMicrophoneMuted = true;
+      _audioLevel = 0.0;
+      _audioLevelSubscription?.cancel();
+      _audioLevelSubscription = null;
+    }
+
+    notifyListeners();
+  }
+
+  /// Start a new chat session
+  Future<void> startChat(BuildContext? context) async {
+    if (_isChatActive) return;
+
+    // Check microphone permission
+    await refreshMicrophonePermission();
+    if (_microphonePermission != PermissionState.granted) {
+      if (context != null && context.mounted) {
+        await _showMicrophonePermissionModal(context);
+      }
       if (_microphonePermission != PermissionState.granted) {
-        if (context != null && context.mounted) {
-          await _showMicrophonePermissionModal(context);
-          // Permission status is already refreshed in the modal
-        }
-        
-        // If still not granted, don't unmute
-        if (_microphonePermission != PermissionState.granted) {
-          return;
-        }
+        return;
       }
     }
 
-    _isMicrophoneMuted = !_isMicrophoneMuted;
+    // Check speech recognition permission
+    final speechStatus = await _speechService.checkPermission();
+    if (speechStatus != 'granted') {
+      final result = await _speechService.requestPermission();
+      if (result != 'granted') {
+        return;
+      }
+    }
+    _speechPermission = PermissionState.granted;
+
+    // Start speech recognition
+    final started = await _speechService.startListening(
+      languageCode: _preferences.languageCode,
+    );
+    if (started) {
+      _isChatActive = true;
+      _chatStartTime = DateTime.now();
+      _isMicrophoneMuted = false;
+
+      // Initialize message tracking
+      _currentMessages = [];
+      _currentMessageStartTime = DateTime.now();
+
+      // Listen to audio level stream
+      _audioLevelSubscription?.cancel();
+      _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
+        _audioLevel = level;
+        notifyListeners();
+      });
+
+      // Listen to speech events (segment complete on silence)
+      _speechEventSubscription?.cancel();
+      _speechEventSubscription = _speechService.speechEventStream.listen((event) {
+        _handleSpeechEvent(event);
+      });
+    }
+
+    notifyListeners();
+  }
+
+  /// Handle speech events from native side
+  void _handleSpeechEvent(Map<String, dynamic> event) {
+    final eventType = event['event'] as String?;
+
+    if (eventType == 'segmentComplete') {
+      final text = event['text'] as String?;
+      if (text != null && text.isNotEmpty) {
+        // Create a message for this completed segment
+        final message = Message(
+          id: DateTime.now().millisecondsSinceEpoch.toString(),
+          text: text,
+          timestamp: _currentMessageStartTime ?? DateTime.now(),
+        );
+        _currentMessages.add(message);
+
+        // Reset message start time for next segment
+        _currentMessageStartTime = DateTime.now();
+
+        notifyListeners();
+      }
+    }
+  }
+
+  /// End chat and save conversation to history
+  Future<void> endChat() async {
+    // Stop listening and get final transcript
+    final transcript = await _speechService.endChat();
+
+    // Save the final transcript as a message
+    if (transcript.isNotEmpty) {
+      final message = Message(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: transcript,
+        timestamp: _currentMessageStartTime ?? DateTime.now(),
+      );
+      _currentMessages.add(message);
+    }
+
+    _audioLevelSubscription?.cancel();
+    _audioLevelSubscription = null;
+    _speechEventSubscription?.cancel();
+    _speechEventSubscription = null;
+    _audioLevel = 0.0;
+    _isMicrophoneMuted = true;
+
+    // Save conversation if there are messages
+    if (_currentMessages.isNotEmpty && _chatStartTime != null) {
+      final duration = DateTime.now().difference(_chatStartTime!);
+      // Build full transcript from all messages
+      final fullTranscript = _currentMessages.map((m) => m.text).join(' ');
+      final conversation = Conversation(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        timestamp: _chatStartTime!,
+        previewText: fullTranscript.length > 100
+            ? '${fullTranscript.substring(0, 100)}...'
+            : fullTranscript,
+        duration: duration,
+        fullTranscript: fullTranscript,
+        messages: List.from(_currentMessages),
+      );
+      await addConversation(conversation);
+    }
+
+    // Reset message tracking
+    _currentMessages = [];
+    _currentMessageStartTime = null;
+
+    _isChatActive = false;
+    _chatStartTime = null;
     notifyListeners();
   }
 
@@ -214,15 +387,15 @@ class AppStateProvider extends ChangeNotifier {
   Future<void> _showScreenRecordingPermissionModal(BuildContext context) async {
     final completer = Completer<void>();
     bool permissionRequested = false;
+    final l10n = LocalizationHelper.of(context);
 
     await PermissionModal.show(
       context: context,
       icon: Icons.screen_share,
       iconColor: AppColors.primaryBlue,
-      title: 'Assistify needs to see your screen',
-      description:
-          'This helps me understand what you\'re looking at and provide better assistance',
-      buttonText: 'Allow Screen Recording',
+      title: l10n.assistifyNeedsToSeeYourScreen,
+      description: l10n.thisHelpsMeUnderstandWhatYouAreLookingAt,
+      buttonText: l10n.allowScreenSharing,
       buttonColor: AppColors.primaryBlue,
       onButtonPressed: () async {
         if (permissionRequested) return;
@@ -250,21 +423,27 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Show microphone permission modal
   Future<void> _showMicrophonePermissionModal(BuildContext context) async {
+    if (!context.mounted) return;
     final completer = Completer<void>();
     bool permissionRequested = false;
+    final l10n = LocalizationHelper.of(context);
 
     // Check if permission is permanently denied
     final isPermanentlyDenied = await isMicrophonePermanentlyDenied();
+
+    if (!context.mounted) return;
 
     await PermissionModal.show(
       context: context,
       icon: Icons.mic,
       iconColor: AppColors.primaryBlue,
-      title: 'Assistify needs microphone access',
+      title: l10n.assistifyNeedsMicrophoneAccess,
       description: isPermanentlyDenied
-          ? 'Microphone permission is permanently denied.\nPlease enable in settings.'
-          : 'This allows me to hear your questions and respond to you',
-      buttonText: isPermanentlyDenied ? 'OPEN SETTINGS' : 'Allow Microphone',
+          ? l10n.microphonePermissionIsPermanentlyDenied
+          : l10n.thisAllowsMeToHearYourQuestionsAndRespondToYou,
+      buttonText: isPermanentlyDenied
+          ? l10n.openSettings
+          : l10n.allowMicrophone,
       buttonColor: AppColors.primaryBlue,
       onButtonPressed: () async {
         if (permissionRequested) return;
@@ -280,18 +459,18 @@ class AppStateProvider extends ChangeNotifier {
           // Request permission FIRST - this will show the system dialog on iOS
           // The system dialog will appear on top of our modal
           await requestMicrophonePermission();
-          
+
           // Wait a moment for the system dialog to appear
           await Future.delayed(const Duration(milliseconds: 100));
-          
+
           // Now dismiss our modal (system dialog is already showing on top)
           if (context.mounted) {
             PermissionModal.dismiss(context);
           }
-          
+
           // Wait for user to respond to system dialog
           await Future.delayed(const Duration(milliseconds: 1000));
-          
+
           // Refresh permission status after request
           await refreshMicrophonePermission();
         }
@@ -307,8 +486,37 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Update user preferences
   Future<void> updatePreferences(UserPreferences preferences) async {
+    final languageChanged =
+        _preferences.useSimplifiedChinese != preferences.useSimplifiedChinese;
     _preferences = preferences;
     await _storageService.savePreferences(preferences);
+
+    // If language changed and chat is active, restart speech recognition with new language
+    if (languageChanged && _isChatActive && !_isMicrophoneMuted) {
+      debugPrint(
+        'Language changed to: ${_preferences.languageCode}, restarting speech recognition',
+      );
+      // Stop current recognition
+      await _speechService.stopListening();
+
+      // Small delay to ensure stop completes
+      await Future.delayed(const Duration(milliseconds: 100));
+
+      // Restart with new language
+      final started = await _speechService.startListening(
+        languageCode: _preferences.languageCode,
+      );
+      if (!started) {
+        debugPrint(
+          'Warning: Failed to restart speech recognition with new language',
+        );
+      } else {
+        debugPrint(
+          'Successfully restarted speech recognition with language: ${_preferences.languageCode}',
+        );
+      }
+    }
+
     notifyListeners();
   }
 
@@ -348,7 +556,7 @@ class AppStateProvider extends ChangeNotifier {
           await file.delete();
         }
       } catch (e) {
-        print('Error deleting recording file: $e');
+        debugPrint('Error deleting recording file: $e');
       }
     }
 
@@ -360,7 +568,10 @@ class AppStateProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _audioLevelSubscription?.cancel();
+    _speechEventSubscription?.cancel();
     _recordingService.dispose();
+    _speechService.dispose();
     super.dispose();
   }
 }

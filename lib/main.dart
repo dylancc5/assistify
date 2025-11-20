@@ -6,6 +6,7 @@ import 'constants/text_styles.dart';
 import 'providers/app_state_provider.dart';
 import 'screens/home_screen.dart';
 import 'widgets/onboarding_flow.dart';
+import 'utils/localization_helper.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,43 +29,66 @@ class AssistifyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return ChangeNotifierProvider(
       create: (context) => AppStateProvider(),
-      child: MaterialApp(
-        debugShowCheckedModeBanner: false,
-        title: 'Assistify',
-        theme: ThemeData(
-          useMaterial3: true,
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: AppColors.primaryBlue,
-            primary: AppColors.primaryBlue,
-            secondary: AppColors.accentCoral,
-            surface: AppColors.cardBackground,
-            error: AppColors.accentCoral,
-          ),
-          scaffoldBackgroundColor: AppColors.background,
-          fontFamily: AppTextStyles.fontFamily,
-          appBarTheme: const AppBarTheme(
-            backgroundColor: AppColors.background,
-            foregroundColor: AppColors.textPrimary,
-            elevation: 0,
-            centerTitle: true,
-          ),
-          cardTheme: CardThemeData(
-            color: AppColors.cardBackground,
-            elevation: 1,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(12),
-            ),
-          ),
-          elevatedButtonTheme: ElevatedButtonThemeData(
-            style: ElevatedButton.styleFrom(
-              textStyle: AppTextStyles.buttonLabel,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+      child: Consumer<AppStateProvider>(
+        builder: (context, appState, child) {
+          final locale = LocalizationHelper.getLocaleFromPreferences(
+            appState.preferences,
+          );
+
+          return MaterialApp(
+            debugShowCheckedModeBanner: false,
+            title: 'Assistify',
+            locale: locale,
+            supportedLocales: LocalizationHelper.supportedLocales,
+            localizationsDelegates: LocalizationHelper.localizationDelegates,
+            theme: ThemeData(
+              useMaterial3: true,
+              colorScheme: ColorScheme.fromSeed(
+                seedColor: AppColors.primaryBlue,
+                primary: AppColors.primaryBlue,
+                secondary: AppColors.accentCoral,
+                surface: AppColors.cardBackground,
+                error: AppColors.accentCoral,
+              ),
+              scaffoldBackgroundColor: AppColors.background,
+              fontFamily: AppTextStyles.fontFamily,
+              appBarTheme: const AppBarTheme(
+                backgroundColor: AppColors.background,
+                foregroundColor: AppColors.textPrimary,
+                elevation: 0,
+                centerTitle: true,
+              ),
+              cardTheme: CardThemeData(
+                color: AppColors.cardBackground,
+                elevation: 1,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+              ),
+              elevatedButtonTheme: ElevatedButtonThemeData(
+                style: ElevatedButton.styleFrom(
+                  textStyle: AppTextStyles.buttonLabel,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                ),
               ),
             ),
-          ),
-        ),
-        home: const AppInitializer(),
+            builder: (context, child) {
+              // Apply text scaling based on user preferences
+              final mediaQuery = MediaQuery.of(context);
+              return MediaQuery(
+                data: mediaQuery.copyWith(
+                  textScaler: TextScaler.linear(
+                    appState.preferences.textScaleFactor,
+                  ),
+                ),
+                child: child!,
+              );
+            },
+            home: const AppInitializer(),
+          );
+        },
       ),
     );
   }

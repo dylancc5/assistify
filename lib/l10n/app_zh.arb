@@ -1,0 +1,69 @@
+{
+  "@@locale": "zh",
+  "settings": "设置",
+  "conversationHistory": "对话历史",
+  "viewYourPastConversations": "查看您与 Assistify 的过往对话",
+  "viewHistory": "查看历史",
+  "screenHistory": "屏幕历史",
+  "viewAndManageYourSharedScreens": "查看和管理您共享的屏幕",
+  "viewScreenHistory": "查看屏幕历史",
+  "preferences": "偏好设置",
+  "largeText": "大字体",
+  "increaseTextSizeForBetterReadability": "增大字体以提高可读性",
+  "slowerSpeech": "慢速语音",
+  "reduceVoiceAssistantSpeakingSpeed": "降低语音助手的语速",
+  "highContrastMode": "高对比度模式",
+  "increaseContrastForBetterVisibility": "增加对比度以提高可见性",
+  "simplifiedChinese": "简体中文",
+  "changeAppLanguageToSimplifiedChinese": "将应用语言更改为简体中文",
+  "aboutAssistify": "关于 Assistify",
+  "version": "版本 {version}",
+  "@version": {
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "privacyPolicy": "隐私政策",
+  "termsOfService": "服务条款",
+  "sendFeedback": "发送反馈",
+  "comingSoon": "{feature} - 即将推出",
+  "@comingSoon": {
+    "placeholders": {
+      "feature": {
+        "type": "String"
+      }
+    }
+  },
+  "history": "历史",
+  "noConversationsYet": "还没有对话",
+  "yourConversationsWithAssistifyWillAppearHere": "您与 Assistify 的对话将显示在这里",
+  "deleteConversation": "删除对话",
+  "areYouSureYouWantToDeleteThisConversation": "您确定要删除此对话吗？此操作无法撤销。",
+  "cancel": "取消",
+  "delete": "删除",
+  "conversationDeleted": "对话已删除",
+  "noSharedScreensYet": "还没有共享屏幕",
+  "shareYourScreenFromTheHomeScreenToSeeItHere": "从主屏幕共享您的屏幕即可在此处查看",
+  "startChat": "开始对话",
+  "endChat": "结束对话",
+  "microphone": "麦克风",
+  "shareScreen": "共享屏幕",
+  "assistifyNeedsToSeeYourScreen": "Assistify 需要查看您的屏幕",
+  "thisHelpsMeUnderstandWhatYouAreLookingAt": "这有助于我了解您正在查看的内容并提供更好的帮助",
+  "allowScreenSharing": "允许屏幕共享",
+  "assistifyNeedsMicrophoneAccess": "Assistify 需要麦克风权限",
+  "microphonePermissionIsPermanentlyDenied": "麦克风权限已被永久拒绝。\n请在设置中启用。",
+  "thisAllowsMeToHearYourQuestionsAndRespondToYou": "这允许我听到您的问题并回复您",
+  "openSettings": "打开设置",
+  "allowMicrophone": "允许麦克风",
+  "perfectYouAreReadyToGo": "完美！您已准备就绪。",
+  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "随时点击麦克风开始与我对话",
+  "getStarted": "开始使用",
+  "permissionRequired": "需要权限",
+  "screenRecordingPermissionIsRequired": "Assistify 需要屏幕录制权限才能正常工作。",
+  "microphonePermissionIsRequired": "Assistify 需要麦克风权限才能正常工作。",
+  "ok": "确定"
+}
+

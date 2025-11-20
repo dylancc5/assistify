@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
 /// Service for handling screen recording using platform channels
@@ -30,7 +31,7 @@ class RecordingService {
       final bool available = await platform.invokeMethod('isAvailable');
       return available;
     } catch (e) {
-      print('Error checking recording availability: $e');
+      debugPrint('Error checking recording availability: $e');
       return false;
     }
   }
@@ -40,14 +41,14 @@ class RecordingService {
   Future<bool> startRecording() async {
     try {
       if (_isRecording) {
-        print('Screen recording is already active');
+        debugPrint('Screen recording is already active');
         return true;
       }
 
       // Check if recording is available
       final available = await isAvailable();
       if (!available) {
-        print('Screen recording is not available on this device');
+        debugPrint('Screen recording is not available on this device');
         return false;
       }
 
@@ -57,15 +58,15 @@ class RecordingService {
       if (success) {
         _isRecording = true;
         _recordingStartTime = DateTime.now();
-        print('Screen recording started successfully');
+        debugPrint('Screen recording started successfully');
       }
 
       return success;
     } on PlatformException catch (e) {
-      print('Platform error starting recording: ${e.code} - ${e.message}');
+      debugPrint('Platform error starting recording: ${e.code} - ${e.message}');
       return false;
     } catch (e) {
-      print('Error starting recording: $e');
+      debugPrint('Error starting recording: $e');
       return false;
     }
   }
@@ -74,7 +75,7 @@ class RecordingService {
   Future<Map<String, dynamic>?> stopRecording() async {
     try {
       if (!_isRecording) {
-        print('Screen recording is not active');
+        debugPrint('Screen recording is not active');
         return null;
       }
 
@@ -83,7 +84,7 @@ class RecordingService {
 
       _isRecording = false;
       _recordingStartTime = null;
-      print('Screen recording stopped successfully');
+      debugPrint('Screen recording stopped successfully');
 
       if (result is Map) {
         return Map<String, dynamic>.from(result);
@@ -91,12 +92,12 @@ class RecordingService {
 
       return null;
     } on PlatformException catch (e) {
-      print('Platform error stopping recording: ${e.code} - ${e.message}');
+      debugPrint('Platform error stopping recording: ${e.code} - ${e.message}');
       _isRecording = false;
       _recordingStartTime = null;
       return null;
     } catch (e) {
-      print('Error stopping recording: $e');
+      debugPrint('Error stopping recording: $e');
       _isRecording = false;
       _recordingStartTime = null;
       return null;
@@ -113,7 +114,7 @@ class RecordingService {
         _recordingStartTime = null;
       }
     } catch (e) {
-      print('Error refreshing recording status: $e');
+      debugPrint('Error refreshing recording status: $e');
     }
   }
 
@@ -134,10 +135,10 @@ class RecordingService {
       final bool success = await platform.invokeMethod('showBroadcastPicker');
       return success;
     } on PlatformException catch (e) {
-      print('Platform error showing broadcast picker: ${e.code} - ${e.message}');
+      debugPrint('Platform error showing broadcast picker: ${e.code} - ${e.message}');
       return false;
     } catch (e) {
-      print('Error showing broadcast picker: $e');
+      debugPrint('Error showing broadcast picker: $e');
       return false;
     }
   }
@@ -148,7 +149,7 @@ class RecordingService {
       final bool broadcasting = await platform.invokeMethod('isBroadcasting');
       return broadcasting;
     } catch (e) {
-      print('Error checking broadcast status: $e');
+      debugPrint('Error checking broadcast status: $e');
       return false;
     }
   }

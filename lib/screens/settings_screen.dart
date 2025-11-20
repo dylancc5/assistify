@@ -4,6 +4,7 @@ import '../constants/colors.dart';
 import '../constants/dimensions.dart';
 import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
+import '../utils/localization_helper.dart';
 import 'history_screen.dart';
 import 'screen_recording_history_screen.dart';
 
@@ -22,7 +23,10 @@ class SettingsScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Settings', style: AppTextStyles.heading),
+        title: Text(
+          LocalizationHelper.of(context).settings,
+          style: AppTextStyles.heading,
+        ),
         centerTitle: true,
       ),
       body: SingleChildScrollView(
@@ -58,6 +62,7 @@ class SettingsScreen extends StatelessWidget {
 
   /// Build history card
   Widget _buildHistoryCard(BuildContext context) {
+    final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
@@ -68,10 +73,10 @@ class SettingsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Conversation History', style: AppTextStyles.bodyLarge),
+            Text(l10n.conversationHistory, style: AppTextStyles.bodyLarge),
             const SizedBox(height: AppDimensions.sm),
             Text(
-              'View your past conversations with Assistify',
+              l10n.viewYourPastConversations,
               style: AppTextStyles.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -89,7 +94,7 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
+                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
                   foregroundColor: AppColors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -99,7 +104,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.history),
-                label: const Text('View History'),
+                label: Text(l10n.viewHistory),
               ),
             ),
           ],
@@ -110,6 +115,7 @@ class SettingsScreen extends StatelessWidget {
 
   /// Build screen recording history section
   Widget _buildScreenRecordingHistorySection(BuildContext context) {
+    final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
@@ -120,10 +126,10 @@ class SettingsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Screen History', style: AppTextStyles.bodyLarge),
+            Text(l10n.screenHistory, style: AppTextStyles.bodyLarge),
             const SizedBox(height: AppDimensions.sm),
             Text(
-              'View and manage your past screen recordings',
+              l10n.viewAndManageYourSharedScreens,
               style: AppTextStyles.body.copyWith(
                 color: AppColors.textSecondary,
               ),
@@ -141,7 +147,7 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: AppColors.primaryBlue.withOpacity(0.1),
+                  backgroundColor: AppColors.primaryBlue.withValues(alpha: 0.1),
                   foregroundColor: AppColors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -151,7 +157,7 @@ class SettingsScreen extends StatelessWidget {
                   ),
                 ),
                 icon: const Icon(Icons.videocam),
-                label: const Text('View Screen History'),
+                label: Text(l10n.viewScreenHistory),
               ),
             ),
           ],
@@ -172,18 +178,19 @@ class SettingsScreen extends StatelessWidget {
         child: Consumer<AppStateProvider>(
           builder: (context, appState, child) {
             final prefs = appState.preferences;
+            final l10n = LocalizationHelper.of(context);
 
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text('Preferences', style: AppTextStyles.bodyLarge),
+                Text(l10n.preferences, style: AppTextStyles.bodyLarge),
                 const SizedBox(height: AppDimensions.sm),
 
                 // Large Text Toggle
                 _buildPreferenceItem(
                   icon: Icons.text_fields,
-                  title: 'Large Text',
-                  subtitle: 'Increase text size for better readability',
+                  title: l10n.largeText,
+                  subtitle: l10n.increaseTextSizeForBetterReadability,
                   value: prefs.largeTextEnabled,
                   onChanged: (value) {
                     appState.updatePreferences(
@@ -197,8 +204,8 @@ class SettingsScreen extends StatelessWidget {
                 // Slower Speech Toggle
                 _buildPreferenceItem(
                   icon: Icons.speed,
-                  title: 'Slower Speech',
-                  subtitle: 'Reduce voice assistant speaking speed',
+                  title: l10n.slowerSpeech,
+                  subtitle: l10n.reduceVoiceAssistantSpeakingSpeed,
                   value: prefs.slowerSpeechEnabled,
                   onChanged: (value) {
                     appState.updatePreferences(
@@ -212,12 +219,27 @@ class SettingsScreen extends StatelessWidget {
                 // High Contrast Toggle
                 _buildPreferenceItem(
                   icon: Icons.contrast,
-                  title: 'High Contrast Mode',
-                  subtitle: 'Increase contrast for better visibility',
+                  title: l10n.highContrastMode,
+                  subtitle: l10n.increaseContrastForBetterVisibility,
                   value: prefs.highContrastEnabled,
                   onChanged: (value) {
                     appState.updatePreferences(
                       prefs.copyWith(highContrastEnabled: value),
+                    );
+                  },
+                ),
+
+                const Divider(color: AppColors.divider, height: 1),
+
+                // Simplified Chinese Toggle
+                _buildPreferenceItem(
+                  icon: Icons.language,
+                  title: l10n.simplifiedChinese,
+                  subtitle: l10n.changeAppLanguageToSimplifiedChinese,
+                  value: prefs.useSimplifiedChinese,
+                  onChanged: (value) {
+                    appState.updatePreferences(
+                      prefs.copyWith(useSimplifiedChinese: value),
                     );
                   },
                 ),
@@ -282,6 +304,7 @@ class SettingsScreen extends StatelessWidget {
 
   /// Build about card
   Widget _buildAboutCard(BuildContext context) {
+    final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
       shape: RoundedRectangleBorder(
@@ -292,19 +315,19 @@ class SettingsScreen extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('About Assistify', style: AppTextStyles.bodyLarge),
+            Text(l10n.aboutAssistify, style: AppTextStyles.bodyLarge),
             const SizedBox(height: AppDimensions.xs),
-            Text('Version 1.0.0', style: AppTextStyles.caption),
+            Text(l10n.version('1.0.0'), style: AppTextStyles.caption),
             const SizedBox(height: AppDimensions.md),
 
             // Privacy Policy
             _buildLinkItem(
               icon: Icons.privacy_tip,
-              title: 'Privacy Policy',
+              title: l10n.privacyPolicy,
               onTap: () {
                 // TODO: Open privacy policy
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Privacy Policy - Coming soon')),
+                  SnackBar(content: Text(l10n.comingSoon(l10n.privacyPolicy))),
                 );
               },
             ),
@@ -314,12 +337,12 @@ class SettingsScreen extends StatelessWidget {
             // Terms of Service
             _buildLinkItem(
               icon: Icons.description,
-              title: 'Terms of Service',
+              title: l10n.termsOfService,
               onTap: () {
                 // TODO: Open terms of service
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Terms of Service - Coming soon'),
+                  SnackBar(
+                    content: Text(l10n.comingSoon(l10n.termsOfService)),
                   ),
                 );
               },
@@ -330,11 +353,11 @@ class SettingsScreen extends StatelessWidget {
             // Send Feedback
             _buildLinkItem(
               icon: Icons.feedback,
-              title: 'Send Feedback',
+              title: l10n.sendFeedback,
               onTap: () {
                 // TODO: Open feedback form
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Send Feedback - Coming soon')),
+                  SnackBar(content: Text(l10n.comingSoon(l10n.sendFeedback))),
                 );
               },
             ),

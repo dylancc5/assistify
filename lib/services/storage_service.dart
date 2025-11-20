@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
@@ -69,7 +70,7 @@ class StorageService {
       final map = jsonDecode(json) as Map<String, dynamic>;
       return UserPreferences.fromJson(map);
     } catch (e) {
-      print('Error loading preferences: $e');
+      debugPrint('Error loading preferences: $e');
       return const UserPreferences();
     }
   }
@@ -94,7 +95,7 @@ class StorageService {
       final list = jsonDecode(json) as List<dynamic>;
       return list.map((item) => Conversation.fromJson(item as Map<String, dynamic>)).toList();
     } catch (e) {
-      print('Error loading conversations: $e');
+      debugPrint('Error loading conversations: $e');
       return [];
     }
   }
@@ -133,7 +134,7 @@ class StorageService {
       final list = jsonDecode(json) as List<dynamic>;
       return list.map((item) => ScreenRecording.fromJson(item as Map<String, dynamic>)).toList();
     } catch (e) {
-      print('Error loading screen recordings: $e');
+      debugPrint('Error loading screen recordings: $e');
       return [];
     }
   }

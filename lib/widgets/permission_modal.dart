@@ -29,7 +29,7 @@ class PermissionModal extends StatelessWidget {
     final screenWidth = MediaQuery.of(context).size.width;
 
     return Material(
-      color: AppColors.background.withOpacity(0.95),
+      color: AppColors.background.withValues(alpha: 0.95),
       child: Center(
         child: Container(
           width: screenWidth * AppDimensions.modalCardWidthPercent,
@@ -39,7 +39,7 @@ class PermissionModal extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppDimensions.borderRadiusLarge),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: 16,
                 offset: const Offset(0, 8),
               ),

@@ -1,0 +1,218 @@
+{
+  "@@locale": "en",
+  "settings": "Settings",
+  "@settings": {
+    "description": "Settings screen title"
+  },
+  "conversationHistory": "Conversation History",
+  "@conversationHistory": {
+    "description": "Conversation history section title"
+  },
+  "viewYourPastConversations": "View your past conversations with Assistify",
+  "@viewYourPastConversations": {
+    "description": "Conversation history description"
+  },
+  "viewHistory": "View History",
+  "@viewHistory": {
+    "description": "Button to view conversation history"
+  },
+  "screenHistory": "Screen History",
+  "@screenHistory": {
+    "description": "Screen recording history section title"
+  },
+  "viewAndManageYourSharedScreens": "View and manage your shared screens",
+  "@viewAndManageYourSharedScreens": {
+    "description": "Screen history description"
+  },
+  "viewScreenHistory": "View Screen History",
+  "@viewScreenHistory": {
+    "description": "Button to view screen recording history"
+  },
+  "preferences": "Preferences",
+  "@preferences": {
+    "description": "Preferences section title"
+  },
+  "largeText": "Large Text",
+  "@largeText": {
+    "description": "Large text preference title"
+  },
+  "increaseTextSizeForBetterReadability": "Increase text size for better readability",
+  "@increaseTextSizeForBetterReadability": {
+    "description": "Large text preference description"
+  },
+  "slowerSpeech": "Slower Speech",
+  "@slowerSpeech": {
+    "description": "Slower speech preference title"
+  },
+  "reduceVoiceAssistantSpeakingSpeed": "Reduce voice assistant speaking speed",
+  "@reduceVoiceAssistantSpeakingSpeed": {
+    "description": "Slower speech preference description"
+  },
+  "highContrastMode": "High Contrast Mode",
+  "@highContrastMode": {
+    "description": "High contrast mode preference title"
+  },
+  "increaseContrastForBetterVisibility": "Increase contrast for better visibility",
+  "@increaseContrastForBetterVisibility": {
+    "description": "High contrast mode preference description"
+  },
+  "simplifiedChinese": "Simplified Chinese",
+  "@simplifiedChinese": {
+    "description": "Simplified Chinese language preference title"
+  },
+  "changeAppLanguageToSimplifiedChinese": "Change app language to Simplified Chinese",
+  "@changeAppLanguageToSimplifiedChinese": {
+    "description": "Simplified Chinese language preference description"
+  },
+  "aboutAssistify": "About Assistify",
+  "@aboutAssistify": {
+    "description": "About section title"
+  },
+  "version": "Version {version}",
+  "@version": {
+    "description": "App version text",
+    "placeholders": {
+      "version": {
+        "type": "String"
+      }
+    }
+  },
+  "privacyPolicy": "Privacy Policy",
+  "@privacyPolicy": {
+    "description": "Privacy policy link"
+  },
+  "termsOfService": "Terms of Service",
+  "@termsOfService": {
+    "description": "Terms of service link"
+  },
+  "sendFeedback": "Send Feedback",
+  "@sendFeedback": {
+    "description": "Send feedback link"
+  },
+  "comingSoon": "{feature} - Coming soon",
+  "@comingSoon": {
+    "description": "Coming soon message",
+    "placeholders": {
+      "feature": {
+        "type": "String"
+      }
+    }
+  },
+  "history": "History",
+  "@history": {
+    "description": "History screen title"
+  },
+  "noConversationsYet": "No conversations yet",
+  "@noConversationsYet": {
+    "description": "Empty state message for conversation history"
+  },
+  "yourConversationsWithAssistifyWillAppearHere": "Your conversations with Assistify will appear here",
+  "@yourConversationsWithAssistifyWillAppearHere": {
+    "description": "Empty state description for conversation history"
+  },
+  "deleteConversation": "Delete Conversation",
+  "@deleteConversation": {
+    "description": "Delete conversation dialog title"
+  },
+  "areYouSureYouWantToDeleteThisConversation": "Are you sure you want to delete this conversation? This action cannot be undone.",
+  "@areYouSureYouWantToDeleteThisConversation": {
+    "description": "Delete conversation confirmation message"
+  },
+  "cancel": "Cancel",
+  "@cancel": {
+    "description": "Cancel button"
+  },
+  "delete": "Delete",
+  "@delete": {
+    "description": "Delete button"
+  },
+  "conversationDeleted": "Conversation deleted",
+  "@conversationDeleted": {
+    "description": "Conversation deleted confirmation message"
+  },
+  "noSharedScreensYet": "No Shared Screens Yet",
+  "@noSharedScreensYet": {
+    "description": "Empty state message for screen recordings"
+  },
+  "shareYourScreenFromTheHomeScreenToSeeItHere": "Share your screen from the home screen to see it here",
+  "@shareYourScreenFromTheHomeScreenToSeeItHere": {
+    "description": "Empty state description for screen recordings"
+  },
+  "startChat": "Start Chat",
+  "@startChat": {
+    "description": "Start chat button label"
+  },
+  "endChat": "End Chat",
+  "@endChat": {
+    "description": "End chat button label"
+  },
+  "microphone": "Microphone",
+  "@microphone": {
+    "description": "Microphone button label"
+  },
+  "shareScreen": "Share Screen",
+  "@shareScreen": {
+    "description": "Share screen button label"
+  },
+  "assistifyNeedsToSeeYourScreen": "Assistify needs to see your screen",
+  "@assistifyNeedsToSeeYourScreen": {
+    "description": "Screen recording permission modal title"
+  },
+  "thisHelpsMeUnderstandWhatYouAreLookingAt": "This helps me understand what you're looking at and provide better assistance",
+  "@thisHelpsMeUnderstandWhatYouAreLookingAt": {
+    "description": "Screen recording permission modal description"
+  },
+  "allowScreenSharing": "Allow Screen Sharing",
+  "@allowScreenSharing": {
+    "description": "Screen recording permission button"
+  },
+  "assistifyNeedsMicrophoneAccess": "Assistify needs microphone access",
+  "@assistifyNeedsMicrophoneAccess": {
+    "description": "Microphone permission modal title"
+  },
+  "microphonePermissionIsPermanentlyDenied": "Microphone permission is permanently denied.\nPlease enable in settings.",
+  "@microphonePermissionIsPermanentlyDenied": {
+    "description": "Microphone permission permanently denied message"
+  },
+  "thisAllowsMeToHearYourQuestionsAndRespondToYou": "This allows me to hear your questions and respond to you",
+  "@thisAllowsMeToHearYourQuestionsAndRespondToYou": {
+    "description": "Microphone permission modal description"
+  },
+  "openSettings": "OPEN SETTINGS",
+  "@openSettings": {
+    "description": "Open settings button"
+  },
+  "allowMicrophone": "Allow Microphone",
+  "@allowMicrophone": {
+    "description": "Allow microphone button"
+  },
+  "perfectYouAreReadyToGo": "Perfect! You're ready to go.",
+  "@perfectYouAreReadyToGo": {
+    "description": "Onboarding success title"
+  },
+  "tapTheMicrophoneAnytimeToStartTalkingWithMe": "Tap the microphone anytime to start talking with me",
+  "@tapTheMicrophoneAnytimeToStartTalkingWithMe": {
+    "description": "Onboarding success description"
+  },
+  "getStarted": "Get Started",
+  "@getStarted": {
+    "description": "Get started button"
+  },
+  "permissionRequired": "Permission Required",
+  "@permissionRequired": {
+    "description": "Permission required dialog title"
+  },
+  "screenRecordingPermissionIsRequired": "Screen recording permission is required for Assistify to work properly.",
+  "@screenRecordingPermissionIsRequired": {
+    "description": "Screen recording permission required message"
+  },
+  "microphonePermissionIsRequired": "Microphone permission is required for Assistify to work properly.",
+  "@microphonePermissionIsRequired": {
+    "description": "Microphone permission required message"
+  },
+  "ok": "OK",
+  "@ok": {
+    "description": "OK button"
+  }
+}
+

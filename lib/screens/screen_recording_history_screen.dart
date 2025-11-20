@@ -5,6 +5,7 @@ import '../constants/dimensions.dart';
 import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
 import '../widgets/screen_recording_card.dart';
+import '../utils/localization_helper.dart';
 
 /// Screen for viewing screen recording history
 class ScreenRecordingHistoryScreen extends StatelessWidget {
@@ -21,7 +22,10 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Screen History', style: AppTextStyles.heading),
+        title: Text(
+          LocalizationHelper.of(context).screenHistory,
+          style: AppTextStyles.heading,
+        ),
         centerTitle: true,
       ),
       body: Consumer<AppStateProvider>(
@@ -50,36 +54,41 @@ class ScreenRecordingHistoryScreen extends StatelessWidget {
 
   /// Build empty state
   Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.xl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.videocam_off,
-              size: 80,
-              color: AppColors.textSecondary.withOpacity(0.3),
+    return Builder(
+      builder: (context) {
+        final l10n = LocalizationHelper.of(context);
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(AppDimensions.xl),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  Icons.videocam_off,
+                  size: 80,
+                  color: AppColors.textSecondary.withValues(alpha: 0.3),
+                ),
+                const SizedBox(height: AppDimensions.lg),
+                Text(
+                  l10n.noSharedScreensYet,
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: AppDimensions.sm),
+                Text(
+                  l10n.shareYourScreenFromTheHomeScreenToSeeItHere,
+                  style: AppTextStyles.body.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  textAlign: TextAlign.center,
+                ),
+              ],
             ),
-            const SizedBox(height: AppDimensions.lg),
-            Text(
-              'No Screen Recordings Yet',
-              style: AppTextStyles.bodyLarge.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: AppDimensions.sm),
-            Text(
-              'Start a screen recording from the home screen to see it here',
-              style: AppTextStyles.body.copyWith(
-                color: AppColors.textSecondary,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-      ),
+          ),
+        );
+      },
     );
   }
 }

@@ -24,9 +24,15 @@ class AppColors {
   static const Color gradientStart = Color(0xFFF8F9FA);
   static const Color gradientEnd = Color(0xFFF0F2F5);
 
-  // Voice Agent Circle Colors
+  // Voice Agent Circle Colors (Active - Blue)
   static const Color voiceAgentGradientStart = Color(0x1A5B8FDB); // 10% opacity
   static const Color voiceAgentGradientEnd = Color(0x0D5B8FDB); // 5% opacity
   static const Color voiceAgentBorder = Color(0x4D5B8FDB); // 30% opacity
   static const Color voiceAgentIcon = Color(0x995B8FDB); // 60% opacity
+
+  // Voice Agent Circle Colors (Inactive - Grey)
+  static const Color voiceAgentGradientStartInactive = Color(0x1AADB5BD); // 10% opacity grey
+  static const Color voiceAgentGradientEndInactive = Color(0x0DADB5BD); // 5% opacity grey
+  static const Color voiceAgentBorderInactive = Color(0x4DADB5BD); // 30% opacity grey
+  static const Color voiceAgentIconInactive = Color(0x99ADB5BD); // 60% opacity grey
 }

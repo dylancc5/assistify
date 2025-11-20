@@ -5,6 +5,7 @@ import '../constants/dimensions.dart';
 import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
 import '../models/conversation.dart';
+import '../utils/localization_helper.dart';
 
 /// History screen showing conversation history
 class HistoryScreen extends StatelessWidget {
@@ -21,8 +22,8 @@ class HistoryScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text(
-          'History',
+        title: Text(
+          LocalizationHelper.of(context).history,
           style: AppTextStyles.heading,
         ),
         centerTitle: true,
@@ -45,30 +46,35 @@ class HistoryScreen extends StatelessWidget {
 
   /// Build empty state
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.chat_bubble_outline,
-            size: 64,
-            color: AppColors.textSecondary,
+    return Builder(
+      builder: (context) {
+        final l10n = LocalizationHelper.of(context);
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.chat_bubble_outline,
+                size: 64,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(height: AppDimensions.md),
+              Text(
+                l10n.noConversationsYet,
+                style: AppTextStyles.heading,
+              ),
+              const SizedBox(height: AppDimensions.sm),
+              Text(
+                l10n.yourConversationsWithAssistifyWillAppearHere,
+                style: AppTextStyles.body.copyWith(
+                  color: AppColors.textSecondary,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ],
           ),
-          const SizedBox(height: AppDimensions.md),
-          const Text(
-            'No conversations yet',
-            style: AppTextStyles.heading,
-          ),
-          const SizedBox(height: AppDimensions.sm),
-          Text(
-            'Your conversations with Assistify will appear here',
-            style: AppTextStyles.body.copyWith(
-              color: AppColors.textSecondary,
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -103,10 +109,12 @@ class HistoryScreen extends StatelessWidget {
       ),
       child: InkWell(
         onTap: () {
-          // TODO: Navigate to conversation detail
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Conversation details - Coming soon'),
+          // Navigate to conversation detail
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (context) => ConversationDetailScreen(
+                conversation: conversation,
+              ),
             ),
           );
         },
@@ -161,17 +169,16 @@ class HistoryScreen extends StatelessWidget {
 
   /// Show delete confirmation dialog
   void _showDeleteDialog(BuildContext context, Conversation conversation) {
+    final l10n = LocalizationHelper.of(context);
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Delete Conversation'),
-        content: const Text(
-          'Are you sure you want to delete this conversation? This action cannot be undone.',
-        ),
+        title: Text(l10n.deleteConversation),
+        content: Text(l10n.areYouSureYouWantToDeleteThisConversation),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Cancel'),
+            child: Text(l10n.cancel),
           ),
           TextButton(
             onPressed: () {
@@ -179,12 +186,175 @@ class HistoryScreen extends StatelessWidget {
               Provider.of<AppStateProvider>(context, listen: false)
                   .deleteConversation(conversation.id);
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Conversation deleted')),
+                SnackBar(content: Text(l10n.conversationDeleted)),
               );
             },
-            child: const Text(
-              'Delete',
-              style: TextStyle(color: Colors.red),
+            child: Text(
+              l10n.delete,
+              style: const TextStyle(color: Colors.red),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Conversation detail screen showing full transcript
+class ConversationDetailScreen extends StatelessWidget {
+  final Conversation conversation;
+
+  const ConversationDetailScreen({
+    super.key,
+    required this.conversation,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: AppColors.background,
+      appBar: AppBar(
+        backgroundColor: AppColors.background,
+        elevation: 1,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          conversation.formattedDateTime,
+          style: AppTextStyles.heading,
+        ),
+        centerTitle: true,
+      ),
+      body: conversation.messages.isNotEmpty
+          ? _buildMessageList()
+          : _buildFullTranscript(),
+    );
+  }
+
+  /// Build message list with speech bubbles
+  Widget _buildMessageList() {
+    return ListView.builder(
+      padding: const EdgeInsets.all(AppDimensions.md),
+      itemCount: conversation.messages.length + 1, // +1 for duration header
+      itemBuilder: (context, index) {
+        if (index == 0) {
+          // Duration header
+          return Padding(
+            padding: const EdgeInsets.only(bottom: AppDimensions.md),
+            child: Row(
+              children: [
+                const Icon(
+                  Icons.access_time,
+                  size: 16,
+                  color: AppColors.textSecondary,
+                ),
+                const SizedBox(width: AppDimensions.xs),
+                Text(
+                  conversation.formattedDuration,
+                  style: AppTextStyles.caption,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final message = conversation.messages[index - 1];
+        return _buildMessageBubble(message);
+      },
+    );
+  }
+
+  /// Build a single message bubble
+  Widget _buildMessageBubble(message) {
+    final timeString = _formatMessageTime(message.timestamp);
+
+    return Align(
+      alignment: Alignment.centerRight,
+      child: Container(
+        margin: const EdgeInsets.only(
+          bottom: AppDimensions.sm,
+          left: AppDimensions.xl,
+        ),
+        padding: const EdgeInsets.all(AppDimensions.md),
+        decoration: BoxDecoration(
+          color: AppColors.primaryBlue.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.end,
+          children: [
+            SelectableText(
+              message.text,
+              style: AppTextStyles.body.copyWith(
+                height: 1.4,
+              ),
+            ),
+            const SizedBox(height: AppDimensions.xs),
+            Text(
+              timeString,
+              style: AppTextStyles.caption.copyWith(
+                fontSize: 10,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// Format message timestamp
+  String _formatMessageTime(DateTime time) {
+    final hour = time.hour > 12 ? time.hour - 12 : (time.hour == 0 ? 12 : time.hour);
+    final minute = time.minute.toString().padLeft(2, '0');
+    final period = time.hour >= 12 ? 'PM' : 'AM';
+    return '$hour:$minute $period';
+  }
+
+  /// Build full transcript view (fallback for old conversations)
+  Widget _buildFullTranscript() {
+    return SingleChildScrollView(
+      padding: const EdgeInsets.all(AppDimensions.md),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Duration info
+          Row(
+            children: [
+              const Icon(
+                Icons.access_time,
+                size: 16,
+                color: AppColors.textSecondary,
+              ),
+              const SizedBox(width: AppDimensions.xs),
+              Text(
+                conversation.formattedDuration,
+                style: AppTextStyles.caption,
+              ),
+            ],
+          ),
+          const SizedBox(height: AppDimensions.md),
+
+          // Full transcript
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppDimensions.md),
+            decoration: BoxDecoration(
+              color: AppColors.cardBackground,
+              borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(alpha: 0.05),
+                  blurRadius: 4,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: SelectableText(
+              conversation.fullTranscript ?? conversation.previewText,
+              style: AppTextStyles.body.copyWith(
+                height: 1.6,
+              ),
             ),
           ),
         ],

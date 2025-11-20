@@ -1,3 +1,5 @@
+import 'message.dart';
+
 /// Model representing a conversation in the history
 class Conversation {
   final String id;
@@ -5,6 +7,7 @@ class Conversation {
   final String previewText;
   final Duration duration;
   final String? fullTranscript; // For future implementation
+  final List<Message> messages; // Individual speech segments
 
   Conversation({
     required this.id,
@@ -12,6 +15,7 @@ class Conversation {
     required this.previewText,
     required this.duration,
     this.fullTranscript,
+    this.messages = const [],
   });
 
   /// Convert to JSON for storage
@@ -22,6 +26,7 @@ class Conversation {
       'previewText': previewText,
       'duration': duration.inSeconds,
       'fullTranscript': fullTranscript,
+      'messages': messages.map((m) => m.toJson()).toList(),
     };
   }
 
@@ -33,6 +38,10 @@ class Conversation {
       previewText: json['previewText'] as String,
       duration: Duration(seconds: json['duration'] as int),
       fullTranscript: json['fullTranscript'] as String?,
+      messages: (json['messages'] as List<dynamic>?)
+              ?.map((m) => Message.fromJson(m as Map<String, dynamic>))
+              .toList() ??
+          [],
     );
   }
 

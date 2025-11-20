@@ -127,7 +127,7 @@ class _ControlButtonState extends State<ControlButton>
                 color: widget.backgroundColor,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
+                    color: Colors.black.withValues(alpha: 0.1),
                     blurRadius: 8,
                     offset: const Offset(0, 2),
                   ),
@@ -144,16 +144,17 @@ class _ControlButtonState extends State<ControlButton>
           ),
 
           // Label
-          const SizedBox(height: AppDimensions.sm),
+          const SizedBox(height: AppDimensions.xs),
           SizedBox(
-            width: 80,
+            width: 100,
             child: Text(
               widget.label,
               style: AppTextStyles.caption.copyWith(
                 color: widget.labelColor,
+                fontSize: 12,
               ),
               textAlign: TextAlign.center,
-              maxLines: 2,
+              maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
           ),
