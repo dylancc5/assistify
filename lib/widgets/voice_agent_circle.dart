@@ -165,70 +165,44 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
           activationValue,
         )!;
 
-        return Stack(
-          alignment: Alignment.center,
-          children: [
-            // Outer ripple rings (audio reactive)
-            if (_smoothedAudioLevel > 0.05) ...[
-              _buildRippleRing(widget.size * 1.3, _smoothedAudioLevel * 0.3, colors),
-              _buildRippleRing(widget.size * 1.15, _smoothedAudioLevel * 0.5, colors),
-            ],
-
-            // Main circle with scale and rotation
-            Transform.scale(
-              scale: totalScale,
-              child: Transform.rotate(
-                angle: _rotationAnimation.value * 2 * 3.14159, // Full rotation
-                child: Container(
-                  width: widget.size,
-                  height: widget.size,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [gradientStart, gradientEnd],
-                    ),
-                    border: Border.all(
-                      color: borderColor,
-                      width:
-                          AppDimensions.voiceAgentBorderWidth +
-                          (_smoothedAudioLevel * 2),
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: shadowColor,
-                        blurRadius: 8 + (_smoothedAudioLevel * 20),
-                        offset: const Offset(0, 4),
-                      ),
-                    ],
+        return Transform.scale(
+          scale: totalScale,
+          child: Transform.rotate(
+            angle: _rotationAnimation.value * 2 * 3.14159, // Full rotation
+            child: Container(
+              width: widget.size,
+              height: widget.size,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [gradientStart, gradientEnd],
+                ),
+                border: Border.all(
+                  color: borderColor,
+                  width:
+                      AppDimensions.voiceAgentBorderWidth +
+                      (_smoothedAudioLevel * 2),
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: shadowColor,
+                    blurRadius: 8 + (_smoothedAudioLevel * 20),
+                    offset: const Offset(0, 4),
                   ),
-                  child: Center(
-                    child: _SmileyFace(
-                      size: AppDimensions.voiceAgentIconSize,
-                      color: iconColor,
-                    ),
-                  ),
+                ],
+              ),
+              child: Center(
+                child: _SmileyFace(
+                  size: AppDimensions.voiceAgentIconSize,
+                  color: iconColor,
                 ),
               ),
             ),
-          ],
+          ),
         );
       },
-    );
-  }
-
-  Widget _buildRippleRing(double size, double opacity, AppColorScheme colors) {
-    return Container(
-      width: size,
-      height: size,
-      decoration: BoxDecoration(
-        shape: BoxShape.circle,
-        border: Border.all(
-          color: colors.primaryBlue.withValues(alpha: opacity),
-          width: 2,
-        ),
-      ),
     );
   }
 }

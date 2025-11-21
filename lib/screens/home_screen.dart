@@ -20,6 +20,48 @@ class HomeScreen extends StatefulWidget {
 
 class _HomeScreenState extends State<HomeScreen> {
   bool _hasShownVoicePrompt = false;
+  final ScrollController _responseScrollController = ScrollController();
+  String? _lastResponse;
+  bool _autoScrollEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _responseScrollController.addListener(_onScroll);
+  }
+
+  void _onScroll() {
+    if (!_responseScrollController.hasClients) return;
+
+    final position = _responseScrollController.position;
+    final isAtBottom = position.pixels >= position.maxScrollExtent - 20;
+
+    if (isAtBottom && !_autoScrollEnabled) {
+      setState(() {
+        _autoScrollEnabled = true;
+      });
+    }
+  }
+
+  void _scrollToBottom() {
+    if (_responseScrollController.hasClients) {
+      _responseScrollController.animateTo(
+        _responseScrollController.position.maxScrollExtent,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+      setState(() {
+        _autoScrollEnabled = true;
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _responseScrollController.removeListener(_onScroll);
+    _responseScrollController.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeDependencies() {
@@ -97,6 +139,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       backgroundColor: colors.background,
       body: SafeArea(
+        bottom: false,
         child: Column(
           children: [
             // App Bar
@@ -110,7 +153,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
             // Control Buttons Section (lower portion - reduced size)
             Expanded(
-              flex: 25,
+              flex: 28,
               child: _buildControlSection(
                 context,
                 screenWidth,
@@ -173,79 +216,170 @@ class _HomeScreenState extends State<HomeScreen> {
   ) {
     final circleSize = AppDimensions.getVoiceAgentCircleSize(screenWidth);
 
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            colors.gradientStart,
-            colors.gradientEnd,
-          ],
-        ),
-      ),
-      child: Consumer<AppStateProvider>(
+    return Consumer<AppStateProvider>(
         builder: (context, appState, child) {
-          return Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              VoiceAgentCircle(
-                size: circleSize,
-                audioLevel: appState.audioLevel,
-                isActive: appState.isChatActive,
-                colors: colors,
-              ),
-              const SizedBox(height: AppDimensions.md),
-              // Gemini response display with smooth animated size transition
-              if (appState.isGeminiLoading)
-                Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: AppDimensions.lg,
-                  ),
-                  child: Text(
-                    '...',
-                    style: AppTextStyles.body.copyWith(
-                      color: colors.textSecondary,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                )
-              else if (appState.displayedGeminiResponse != null)
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: AppDimensions.lg,
-                    ),
-                    child: AnimatedSize(
-                      duration: const Duration(milliseconds: 150),
-                      curve: Curves.easeOutCubic,
-                      alignment: Alignment.topCenter,
-                      child: Container(
-                        padding: const EdgeInsets.all(AppDimensions.md),
-                        decoration: BoxDecoration(
-                          color: colors.cardBackground.withValues(alpha: 0.9),
-                          borderRadius: BorderRadius.circular(
-                            AppDimensions.borderRadiusMedium,
-                          ),
-                          border: colors.isHighContrast
-                              ? Border.all(color: colors.border, width: 2)
-                              : null,
-                        ),
-                        child: Text(
-                          appState.displayedGeminiResponse!,
-                          style: AppTextStyles.body.copyWith(
-                            color: colors.textPrimary,
-                          ),
-                          textAlign: TextAlign.center,
-                        ),
+          final hasResponse = appState.isGeminiLoading ||
+              appState.displayedGeminiResponse != null;
+
+          return LayoutBuilder(
+            builder: (context, constraints) {
+              final availableHeight = constraints.maxHeight;
+              final topPadding = hasResponse
+                  ? AppDimensions.xl
+                  : (availableHeight - circleSize) / 2;
+
+              return Stack(
+                children: [
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOutCubic,
+                    top: topPadding,
+                    left: 0,
+                    right: 0,
+                    child: Center(
+                      child: VoiceAgentCircle(
+                        size: circleSize,
+                        audioLevel: appState.audioLevel,
+                        isActive: appState.isChatActive,
+                        colors: colors,
                       ),
                     ),
                   ),
-                ),
-            ],
+                  AnimatedPositioned(
+                    duration: const Duration(milliseconds: 400),
+                    curve: Curves.easeInOutCubic,
+                    top: topPadding + circleSize + AppDimensions.lg,
+                    left: 0,
+                    right: 0,
+                    bottom: AppDimensions.md,
+                    child: Column(
+                      children: [
+                        // Gemini response display with smooth animated size transition
+                        if (appState.isGeminiLoading)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: AppDimensions.lg,
+                            ),
+                            child: Text(
+                              '...',
+                              style: AppTextStyles.body.copyWith(
+                                color: colors.textSecondary,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                          )
+                        else if (appState.displayedGeminiResponse != null)
+                          Expanded(
+                            child: Builder(
+                              builder: (context) {
+                                // Auto-scroll when response updates (only if enabled)
+                                if (_lastResponse != appState.displayedGeminiResponse) {
+                                  _lastResponse = appState.displayedGeminiResponse;
+                                  if (_autoScrollEnabled) {
+                                    Future.delayed(const Duration(milliseconds: 50), () {
+                                      if (_responseScrollController.hasClients && _autoScrollEnabled) {
+                                        _responseScrollController.animateTo(
+                                          _responseScrollController.position.maxScrollExtent,
+                                          duration: const Duration(milliseconds: 150),
+                                          curve: Curves.easeOut,
+                                        );
+                                      }
+                                    });
+                                  }
+                                }
+                                return Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: AppDimensions.lg,
+                                  ),
+                                  child: Stack(
+                                    children: [
+                                      Container(
+                                        decoration: BoxDecoration(
+                                          color: colors.cardBackground.withValues(alpha: 0.9),
+                                          borderRadius: BorderRadius.circular(
+                                            AppDimensions.borderRadiusMedium,
+                                          ),
+                                          border: colors.isHighContrast
+                                              ? Border.all(color: colors.border, width: 2)
+                                              : null,
+                                        ),
+                                        child: ClipRRect(
+                                          borderRadius: BorderRadius.circular(
+                                            AppDimensions.borderRadiusMedium,
+                                          ),
+                                          child: NotificationListener<ScrollNotification>(
+                                            onNotification: (notification) {
+                                              if (notification is ScrollUpdateNotification) {
+                                                if (notification.dragDetails != null) {
+                                                  // User is manually scrolling
+                                                  final position = _responseScrollController.position;
+                                                  final isAtBottom = position.pixels >= position.maxScrollExtent - 20;
+                                                  if (!isAtBottom && _autoScrollEnabled) {
+                                                    setState(() {
+                                                      _autoScrollEnabled = false;
+                                                    });
+                                                  }
+                                                }
+                                              }
+                                              return false;
+                                            },
+                                            child: SingleChildScrollView(
+                                              controller: _responseScrollController,
+                                              padding: const EdgeInsets.all(AppDimensions.md),
+                                              child: Text(
+                                                appState.displayedGeminiResponse!,
+                                                style: AppTextStyles.body.copyWith(
+                                                  color: colors.textPrimary,
+                                                ),
+                                                textAlign: TextAlign.center,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ),
+                                      // Scroll to bottom button
+                                      if (!_autoScrollEnabled)
+                                        Positioned(
+                                          bottom: AppDimensions.sm,
+                                          right: AppDimensions.sm,
+                                          child: GestureDetector(
+                                            onTap: _scrollToBottom,
+                                            child: Container(
+                                              width: 36,
+                                              height: 36,
+                                              decoration: BoxDecoration(
+                                                shape: BoxShape.circle,
+                                                color: colors.primaryBlue,
+                                                boxShadow: [
+                                                  BoxShadow(
+                                                    color: Colors.black.withValues(alpha: 0.2),
+                                                    blurRadius: 4,
+                                                    offset: const Offset(0, 2),
+                                                  ),
+                                                ],
+                                              ),
+                                              child: const Icon(
+                                                Icons.keyboard_arrow_down,
+                                                color: Colors.white,
+                                                size: 24,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                                );
+                              },
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              );
+            },
           );
         },
-      ),
     );
   }
 
@@ -276,17 +410,19 @@ class _HomeScreenState extends State<HomeScreen> {
           ),
         ],
       ),
-      child: Padding(
-        padding: EdgeInsets.symmetric(
-          horizontal: AppDimensions.lg * paddingMultiplier,
-          vertical: AppDimensions.lg * paddingMultiplier,
-        ),
-        child: Consumer<AppStateProvider>(
-          builder: (context, appState, child) {
-            final l10n = LocalizationHelper.of(context);
-            return Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.center,
+      child: SafeArea(
+        top: false,
+        child: Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: AppDimensions.lg * paddingMultiplier,
+            vertical: AppDimensions.lg * paddingMultiplier,
+          ),
+          child: Consumer<AppStateProvider>(
+            builder: (context, appState, child) {
+              final l10n = LocalizationHelper.of(context);
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // Start/End Chat Button
                 ControlButton(
@@ -349,6 +485,7 @@ class _HomeScreenState extends State<HomeScreen> {
               ],
             );
           },
+          ),
         ),
       ),
     );
