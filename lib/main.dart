@@ -1,4 +1,4 @@
-// FIXME: Make sure microphone turns back on, even in the background
+// FIXME: Make STT never turn off, if possible; how to reset cache without restarting STT? perplexity this
 
 // TODO: Find way to screen record even outside of app
 // TODO: Implement screenshot input into LLM API
@@ -7,9 +7,8 @@
 
 // FIXME: Check other promised features to implement
 // FIXME: Replace Gemini with Baidu ERNIE
+// FIXME: Improve prompt engineering for better personality and responses
 
-// TODO: Open privacy policy
-// TODO: Open terms of service
 // TODO: Open feedback form
 
 import 'package:flutter/material.dart';

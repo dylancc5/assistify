@@ -511,6 +511,492 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Display transcribed AI responses on screen'**
   String get displayTranscribedAIResponsesOnScreen;
+
+  /// Label for last updated date on legal screens
+  ///
+  /// In en, this message translates to:
+  /// **'Last updated: {date}'**
+  String legalLastUpdated(String date);
+
+  /// Heading for legal contact card
+  ///
+  /// In en, this message translates to:
+  /// **'Need help or have a question?'**
+  String get legalContactHeading;
+
+  /// Body text for legal contact card
+  ///
+  /// In en, this message translates to:
+  /// **'Reach out to our team any time if you want to exercise your privacy rights, report a safety concern, or ask about these terms.'**
+  String get legalContactBody;
+
+  /// Support email address
+  ///
+  /// In en, this message translates to:
+  /// **'support@assistify.ai'**
+  String get legalContactEmail;
+
+  /// Date shown in last-updated label for legal screens
+  ///
+  /// In en, this message translates to:
+  /// **'November 21, 2025'**
+  String get legalLastUpdatedDate;
+
+  /// Privacy policy intro first paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify is a multimodal assistant built to keep seniors safe and confident while navigating smartphones.'**
+  String get privacyPolicyIntroParagraph1;
+
+  /// Privacy policy intro second paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'This privacy policy explains what information we process, why we need it, and the choices you have when using Assistify.'**
+  String get privacyPolicyIntroParagraph2;
+
+  /// Privacy policy data collection section title
+  ///
+  /// In en, this message translates to:
+  /// **'Information we collect'**
+  String get privacySectionDataWeCollectTitle;
+
+  /// Privacy policy data collection section body
+  ///
+  /// In en, this message translates to:
+  /// **'We only process information that helps deliver context-aware guidance, personalize accessibility, and protect you from scams.'**
+  String get privacySectionDataWeCollectBody1;
+
+  /// Bullet describing screen data
+  ///
+  /// In en, this message translates to:
+  /// **'Screen understanding signals such as temporary captures, recognized UI elements, and safety flags generated while Assistify is guiding you.'**
+  String get privacyDataWeCollectBulletScreen;
+
+  /// Bullet describing audio data
+  ///
+  /// In en, this message translates to:
+  /// **'Voice interactions, transcripts, and audio-level indicators required to understand your questions and respond through speech.'**
+  String get privacyDataWeCollectBulletAudio;
+
+  /// Bullet describing preference data
+  ///
+  /// In en, this message translates to:
+  /// **'Accessibility preferences, language selections, and onboarding completion status stored on-device to keep your experience consistent.'**
+  String get privacyDataWeCollectBulletPreferences;
+
+  /// Bullet describing diagnostics data
+  ///
+  /// In en, this message translates to:
+  /// **'Diagnostic logs, performance metrics, and crash reports that help us maintain reliability. These never include full screen recordings unless you choose to share them with support.'**
+  String get privacyDataWeCollectBulletDiagnostics;
+
+  /// Section title for how information is used
+  ///
+  /// In en, this message translates to:
+  /// **'How we use information'**
+  String get privacyHowWeUseTitle;
+
+  /// How we use information paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'We use the data above to provide real-time guidance, adapt recommendations to your preferences, detect scams, and keep the service running smoothly.'**
+  String get privacyHowWeUseBody1;
+
+  /// How we use information paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'Aggregated and de-identified analytics help us prioritize new accessibility features without identifying you personally.'**
+  String get privacyHowWeUseBody2;
+
+  /// Section title for information sharing
+  ///
+  /// In en, this message translates to:
+  /// **'When we share information'**
+  String get privacySharingTitle;
+
+  /// Information sharing paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'We do not sell your personal data. We only share limited information when necessary to operate the service or comply with the law.'**
+  String get privacySharingBody1;
+
+  /// Vendors bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Trusted infrastructure and processing partners who host storage, speech, or safety services under strict contractual safeguards.'**
+  String get privacySharingBulletVendors;
+
+  /// Compliance bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Public authorities when legally required to respond to valid law-enforcement or safety requests.'**
+  String get privacySharingBulletCompliance;
+
+  /// Consent bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Third parties you explicitly authorize, such as caregivers you invite to review a conversation or recording.'**
+  String get privacySharingBulletConsent;
+
+  /// Safety section title
+  ///
+  /// In en, this message translates to:
+  /// **'Safety and scam protection'**
+  String get privacySafetyTitle;
+
+  /// Safety paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify analyzes screen content to warn you about suspicious links, deceptive prompts, or potentially harmful actions before you tap.'**
+  String get privacySafetyBody1;
+
+  /// Safety paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'When we detect high-risk activity we may temporarily store relevant snippets so our trust team can investigate patterns of abuse.'**
+  String get privacySafetyBody2;
+
+  /// Storage section title
+  ///
+  /// In en, this message translates to:
+  /// **'Storage and retention'**
+  String get privacyStorageTitle;
+
+  /// Storage paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'Most information, including preferences and histories, is stored locally on your device. Cloud backups are encrypted in transit and at rest.'**
+  String get privacyStorageBody1;
+
+  /// Storage paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'We retain transcripts, recordings, and diagnostics only as long as needed to provide the service or as required by law. You can delete them at any time from the history screens.'**
+  String get privacyStorageBody2;
+
+  /// Choices section title
+  ///
+  /// In en, this message translates to:
+  /// **'Your choices and controls'**
+  String get privacyChoicesTitle;
+
+  /// Choices paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify was built to give you clear controls over your information.'**
+  String get privacyChoicesBody1;
+
+  /// Permissions choice bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Adjust microphone and screen permissions directly in system settings. Assistify will always explain why a permission is required.'**
+  String get privacyChoicesBulletPermissions;
+
+  /// History choice bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Review, export, or delete individual conversations and screen recordings from their respective history pages.'**
+  String get privacyChoicesBulletHistory;
+
+  /// Preferences choice bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Update accessibility preferences—such as large text, slower speech, or high contrast—without affecting stored data.'**
+  String get privacyChoicesBulletPreferences;
+
+  /// Contact choice bullet
+  ///
+  /// In en, this message translates to:
+  /// **'Contact us if you need help accessing, correcting, or limiting any information we hold about you.'**
+  String get privacyChoicesBulletContact;
+
+  /// Children section title
+  ///
+  /// In en, this message translates to:
+  /// **'Children’s privacy'**
+  String get privacyChildrenTitle;
+
+  /// Children paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify is intended for individuals 13 years and older. We do not knowingly collect personal data from children and will delete any such data if we learn a minor is using the service without guardian consent.'**
+  String get privacyChildrenBody1;
+
+  /// International transfers title
+  ///
+  /// In en, this message translates to:
+  /// **'International data transfers'**
+  String get privacyInternationalTitle;
+
+  /// International transfers paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify may process data in the United States and other locations where our partners operate. We apply comparable safeguards regardless of where data is stored.'**
+  String get privacyInternationalBody1;
+
+  /// Changes section title
+  ///
+  /// In en, this message translates to:
+  /// **'How we’ll notify you about changes'**
+  String get privacyChangesTitle;
+
+  /// Changes paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'We may update this policy to reflect new features or regulatory requirements. Material updates will be highlighted inside the app and through release notes.'**
+  String get privacyChangesBody1;
+
+  /// Changes paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'If you continue using Assistify after a revision becomes effective, you agree to the updated policy.'**
+  String get privacyChangesBody2;
+
+  /// Terms acceptance section title
+  ///
+  /// In en, this message translates to:
+  /// **'Acceptance of these terms'**
+  String get legalAcceptanceTitle;
+
+  /// Terms intro first paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'These Terms of Service govern your use of the Assistify mobile application and any related services.'**
+  String get termsIntroParagraph1;
+
+  /// Terms intro second paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'By installing, accessing, or using Assistify you agree to be bound by these Terms and our Privacy Policy.'**
+  String get termsIntroParagraph2;
+
+  /// Terms acceptance body text
+  ///
+  /// In en, this message translates to:
+  /// **'If you do not agree with these Terms, do not use the service. We may update the Terms as the product evolves, and your continued use means you accept the revised version.'**
+  String get termsAcceptanceBody1;
+
+  /// Service section title
+  ///
+  /// In en, this message translates to:
+  /// **'Description of the service'**
+  String get termsSectionServiceTitle;
+
+  /// Service body paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify provides context-aware guidance by combining screen understanding, speech recognition, and conversational AI to help seniors complete tasks safely.'**
+  String get termsSectionServiceBody1;
+
+  /// Service body paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify does not replace professional caregivers, medical providers, or financial advisors. You remain responsible for decisions you make based on the guidance provided.'**
+  String get termsSectionServiceBody2;
+
+  /// Eligibility section title
+  ///
+  /// In en, this message translates to:
+  /// **'Eligibility and onboarding'**
+  String get termsSectionEligibilityTitle;
+
+  /// Eligibility paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'You must be at least 13 years old, reside in a region where Assistify is available, and have the legal capacity to enter these Terms.'**
+  String get termsSectionEligibilityBody1;
+
+  /// Eligibility paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'To unlock full functionality you must complete onboarding, grant required permissions, and ensure device compatibility.'**
+  String get termsSectionEligibilityBody2;
+
+  /// Permissions section title
+  ///
+  /// In en, this message translates to:
+  /// **'Permissions and user responsibilities'**
+  String get termsSectionPermissionsTitle;
+
+  /// Permissions paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify requires microphone access, screen recording access, and stable connectivity to deliver guidance. You agree to:'**
+  String get termsSectionPermissionsBody1;
+
+  /// Permissions bullet accurate info
+  ///
+  /// In en, this message translates to:
+  /// **'Provide accurate information when asked about your device, goals, or safety concerns.'**
+  String get termsSectionPermissionsBulletAccurateInfo;
+
+  /// Permissions bullet environment
+  ///
+  /// In en, this message translates to:
+  /// **'Use the app in environments where screen sharing is permitted and does not expose confidential data without consent.'**
+  String get termsSectionPermissionsBulletEnvironment;
+
+  /// Permissions bullet notifications
+  ///
+  /// In en, this message translates to:
+  /// **'Review and follow the safety prompts Assistify surfaces before acting on them.'**
+  String get termsSectionPermissionsBulletNotifications;
+
+  /// Acceptable use section title
+  ///
+  /// In en, this message translates to:
+  /// **'Acceptable use'**
+  String get termsSectionAcceptableUseTitle;
+
+  /// Acceptable use paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'You agree not to misuse Assistify or help others do so. Prohibited conduct includes:'**
+  String get termsSectionAcceptableUseBody1;
+
+  /// Acceptable use bullet malicious
+  ///
+  /// In en, this message translates to:
+  /// **'Reverse engineering, probing, or interfering with Assistify’s infrastructure or security safeguards.'**
+  String get termsAcceptableUseBulletMalicious;
+
+  /// Acceptable use bullet scams
+  ///
+  /// In en, this message translates to:
+  /// **'Using the service to plan, execute, or amplify scams, fraud, or other deceptive practices.'**
+  String get termsAcceptableUseBulletScams;
+
+  /// Acceptable use bullet unlawful
+  ///
+  /// In en, this message translates to:
+  /// **'Uploading or sharing content that infringes intellectual property rights or violates applicable laws.'**
+  String get termsAcceptableUseBulletUnlawful;
+
+  /// Acceptable use bullet interfere
+  ///
+  /// In en, this message translates to:
+  /// **'Attempting to overload networks, harvest data, or disrupt other users’ experience.'**
+  String get termsAcceptableUseBulletInterfere;
+
+  /// AI guidance section title
+  ///
+  /// In en, this message translates to:
+  /// **'AI guidance and limitations'**
+  String get termsSectionAIGuidanceTitle;
+
+  /// AI guidance paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify relies on AI models and real-time screen understanding. While we strive for accuracy, AI-generated guidance may occasionally be incorrect or outdated.'**
+  String get termsSectionAIGuidanceBody1;
+
+  /// AI guidance bullet accuracy
+  ///
+  /// In en, this message translates to:
+  /// **'Information provided is for assistance only and may not reflect the latest user interface changes.'**
+  String get termsSectionAIGuidanceBulletAccuracy;
+
+  /// AI guidance bullet verification
+  ///
+  /// In en, this message translates to:
+  /// **'You remain responsible for reviewing instructions before acting, especially when sending money or sharing personal data.'**
+  String get termsSectionAIGuidanceBulletVerification;
+
+  /// AI guidance bullet emergencies
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify is not an emergency service. Call your local authorities in case of urgent medical, safety, or financial threats.'**
+  String get termsSectionAIGuidanceBulletEmergencies;
+
+  /// Privacy section title
+  ///
+  /// In en, this message translates to:
+  /// **'Privacy and security'**
+  String get termsSectionPrivacyTitle;
+
+  /// Privacy section body
+  ///
+  /// In en, this message translates to:
+  /// **'Use of Assistify is also governed by our Privacy Policy, which explains how we collect and protect personal data.'**
+  String get termsSectionPrivacyBody1;
+
+  /// Third-party section title
+  ///
+  /// In en, this message translates to:
+  /// **'Third-party services and links'**
+  String get termsSectionThirdPartyTitle;
+
+  /// Third-party section body
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify may guide you through third-party apps or websites. Those services are governed by their own terms and privacy policies.'**
+  String get termsSectionThirdPartyBody1;
+
+  /// Availability section title
+  ///
+  /// In en, this message translates to:
+  /// **'Service availability and changes'**
+  String get termsSectionAvailabilityTitle;
+
+  /// Availability paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'We may add, remove, or change features, and we may suspend the service to address maintenance or security issues.'**
+  String get termsSectionAvailabilityBody1;
+
+  /// Availability paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify is provided on an as-available basis. We are not liable for delays or failures caused by events outside our control.'**
+  String get termsSectionAvailabilityBody2;
+
+  /// Termination section title
+  ///
+  /// In en, this message translates to:
+  /// **'Termination'**
+  String get termsSectionTerminationTitle;
+
+  /// Termination paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'You may stop using Assistify at any time. Delete the app to revoke its permissions and remove local data.'**
+  String get termsSectionTerminationBody1;
+
+  /// Termination paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'We may suspend or terminate access if you violate these Terms, misuse permissions, or compromise the safety of others.'**
+  String get termsSectionTerminationBody2;
+
+  /// Disclaimers section title
+  ///
+  /// In en, this message translates to:
+  /// **'Disclaimers and limitation of liability'**
+  String get termsSectionDisclaimersTitle;
+
+  /// Disclaimers paragraph 1
+  ///
+  /// In en, this message translates to:
+  /// **'Assistify is provided “as is” without warranties of accuracy, reliability, or fitness for a particular purpose.'**
+  String get termsSectionDisclaimersBody1;
+
+  /// Disclaimers paragraph 2
+  ///
+  /// In en, this message translates to:
+  /// **'To the extent permitted by law, Assistify and its partners will not be liable for indirect, incidental, or consequential damages arising from your use of the service.'**
+  String get termsSectionDisclaimersBody2;
+
+  /// Governing law section title
+  ///
+  /// In en, this message translates to:
+  /// **'Governing law'**
+  String get termsSectionGoverningLawTitle;
+
+  /// Governing law paragraph
+  ///
+  /// In en, this message translates to:
+  /// **'These Terms are governed by the laws of the State of California, excluding its conflict-of-law rules, unless the laws of your jurisdiction require otherwise.'**
+  String get termsSectionGoverningLawBody1;
 }
 
 class _AppLocalizationsDelegate

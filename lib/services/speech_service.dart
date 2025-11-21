@@ -3,9 +3,15 @@ import 'package:flutter/services.dart';
 
 /// Service for handling speech recognition via iOS SFSpeechRecognizer
 class SpeechService {
-  static const _methodChannel = MethodChannel('com.assistify/speech_recognition');
-  static const _audioLevelEventChannel = EventChannel('com.assistify/audio_levels');
-  static const _speechEventChannel = EventChannel('com.assistify/speech_events');
+  static const _methodChannel = MethodChannel(
+    'com.assistify/speech_recognition',
+  );
+  static const _audioLevelEventChannel = EventChannel(
+    'com.assistify/audio_levels',
+  );
+  static const _speechEventChannel = EventChannel(
+    'com.assistify/speech_events',
+  );
 
   // Cache the broadcast streams so we don't create new ones each time
   Stream<double>? _audioLevelStream;
@@ -13,7 +19,9 @@ class SpeechService {
 
   /// Stream of audio levels (0.0 - 1.0)
   Stream<double> get audioLevelStream {
-    _audioLevelStream ??= _audioLevelEventChannel.receiveBroadcastStream().map((level) {
+    _audioLevelStream ??= _audioLevelEventChannel.receiveBroadcastStream().map((
+      level,
+    ) {
       if (level is num) {
         return level.toDouble();
       }
@@ -24,7 +32,9 @@ class SpeechService {
 
   /// Stream of speech events (segment complete, etc.)
   Stream<Map<String, dynamic>> get speechEventStream {
-    _speechEventStream ??= _speechEventChannel.receiveBroadcastStream().map((event) {
+    _speechEventStream ??= _speechEventChannel.receiveBroadcastStream().map((
+      event,
+    ) {
       if (event is Map) {
         return Map<String, dynamic>.from(event);
       }
@@ -36,7 +46,9 @@ class SpeechService {
   /// Check speech recognition permission status
   Future<String> checkPermission() async {
     try {
-      final result = await _methodChannel.invokeMethod<String>('checkPermission');
+      final result = await _methodChannel.invokeMethod<String>(
+        'checkPermission',
+      );
       return result ?? 'notDetermined';
     } catch (e) {
       debugPrint('Error checking speech permission: $e');
@@ -47,7 +59,9 @@ class SpeechService {
   /// Request speech recognition permission
   Future<String> requestPermission() async {
     try {
-      final result = await _methodChannel.invokeMethod<String>('requestPermission');
+      final result = await _methodChannel.invokeMethod<String>(
+        'requestPermission',
+      );
       return result ?? 'denied';
     } catch (e) {
       debugPrint('Error requesting speech permission: $e');
@@ -59,10 +73,9 @@ class SpeechService {
   Future<bool> startListening({String? languageCode}) async {
     try {
       final langCode = languageCode ?? 'en-US';
-      final result = await _methodChannel.invokeMethod<bool>(
-        'startListening',
-        {'languageCode': langCode},
-      );
+      final result = await _methodChannel.invokeMethod<bool>('startListening', {
+        'languageCode': langCode,
+      });
       return result ?? false;
     } catch (e) {
       debugPrint('Error starting speech recognition: $e');

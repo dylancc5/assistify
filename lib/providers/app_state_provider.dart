@@ -72,6 +72,11 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // Audio level tracking for stats
   List<double> _audioLevelSamples = [];
+  List<double> _ttsAudioLevelSamples = [];
+  StreamSubscription<double>? _ttsAudioLevelSubscription;
+
+  // Flag to ignore STT input while agent is speaking
+  bool _ignoringSTT = false;
 
   // Getters for enhanced voice prompt
   bool get shouldPromptForEnhancedVoice => _shouldPromptForEnhancedVoice;
@@ -378,6 +383,11 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     final eventType = event['event'] as String?;
 
     if (eventType == 'segmentComplete') {
+      // Ignore STT input while agent is speaking (it's just picking up TTS output)
+      if (_ignoringSTT) {
+        return;
+      }
+
       final text = event['text'] as String?;
       if (text != null && text.isNotEmpty) {
         // Stop any TTS playback when user starts speaking
@@ -482,11 +492,33 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         : (samples[samples.length ~/ 2 - 1] + samples[samples.length ~/ 2]) / 2;
 
     debugPrint(
-      'Audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
+      'User audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
     );
 
     // Clear samples for next segment
     _audioLevelSamples = [];
+  }
+
+  /// Print TTS audio level stats
+  void _printTTSAudioStats() {
+    if (_ttsAudioLevelSamples.isEmpty) return;
+
+    final samples = List<double>.from(_ttsAudioLevelSamples);
+    samples.sort();
+
+    final min = samples.first;
+    final max = samples.last;
+    final avg = samples.reduce((a, b) => a + b) / samples.length;
+    final median = samples.length.isOdd
+        ? samples[samples.length ~/ 2]
+        : (samples[samples.length ~/ 2 - 1] + samples[samples.length ~/ 2]) / 2;
+
+    debugPrint(
+      'Agent audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
+    );
+
+    // Clear samples for next segment
+    _ttsAudioLevelSamples = [];
   }
 
   /// Send message to Gemini and update response
@@ -523,16 +555,22 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
             );
             _currentMessages.add(agentMessage);
 
-            // Stop speech recognition while TTS is speaking to avoid self-listening
-            if (_isChatActive && !_isMicrophoneMuted) {
-              await _speechService.stopListening();
-              _audioLevelSubscription?.cancel();
-              _audioLevel = 0.0;
-            }
+            // Set flag to ignore STT input while speaking
+            // STT keeps running but we discard its output (it's just hearing TTS)
+            _ignoringSTT = true;
 
             // Set speaking state
             _voiceAgentState = VoiceAgentState.speaking;
             notifyListeners();
+
+            // Start collecting TTS audio levels
+            _ttsAudioLevelSamples = [];
+            _ttsAudioLevelSubscription?.cancel();
+            _ttsAudioLevelSubscription = _ttsService.audioLevelStream.listen((
+              level,
+            ) {
+              _ttsAudioLevelSamples.add(level);
+            });
 
             await _ttsService.speak(
               text: response,
@@ -540,22 +578,27 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
               slowerSpeech: _preferences.slowerSpeechEnabled,
             );
 
-            _audioLevel = 0.0;
+            // Stop collecting and print TTS stats
+            _ttsAudioLevelSubscription?.cancel();
+            _ttsAudioLevelSubscription = null;
+            _printTTSAudioStats();
 
-            // Restart speech recognition after TTS finishes
+            // Restart STT to clear any garbage collected while agent was speaking
             if (_isChatActive && !_isMicrophoneMuted) {
-              _voiceAgentState = VoiceAgentState.listening;
-              final started = await _speechService.startListening(
+              await _speechService.stopListening();
+              // Small delay to ensure clean state before accepting input again
+              await Future.delayed(const Duration(milliseconds: 100));
+              // Clear audio samples collected during agent speech (it's just TTS noise)
+              _audioLevelSamples = [];
+              await _speechService.startListening(
                 languageCode: _preferences.languageCode,
               );
-              if (started) {
-                _audioLevelSubscription?.cancel();
-                _audioLevelSubscription = _speechService.audioLevelStream
-                    .listen((level) {
-                      _audioLevel = level;
-                      notifyListeners();
-                    });
-              }
+              _voiceAgentState = VoiceAgentState.listening;
+              // Additional delay to let STT fully initialize before accepting input
+              await Future.delayed(const Duration(milliseconds: 50));
+              _ignoringSTT = false;
+            } else {
+              _ignoringSTT = false;
             }
           }
 
@@ -887,6 +930,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     WidgetsBinding.instance.removeObserver(this);
     _audioLevelSubscription?.cancel();
     _speechEventSubscription?.cancel();
+    _ttsAudioLevelSubscription?.cancel();
     _typewriterTimer?.cancel();
     _recordingService.dispose();
     _speechService.dispose();

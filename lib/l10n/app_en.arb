@@ -262,6 +262,335 @@
   "displayTranscribedAIResponsesOnScreen": "Display transcribed AI responses on screen",
   "@displayTranscribedAIResponsesOnScreen": {
     "description": "Show response text preference description"
+  },
+  "legalLastUpdated": "Last updated: {date}",
+  "@legalLastUpdated": {
+    "description": "Label for last updated date on legal screens",
+    "placeholders": {
+      "date": {
+        "type": "String"
+      }
+    }
+  },
+  "legalContactHeading": "Need help or have a question?",
+  "@legalContactHeading": {
+    "description": "Heading for legal contact card"
+  },
+  "legalContactBody": "Reach out to our team any time if you want to exercise your privacy rights, report a safety concern, or ask about these terms.",
+  "@legalContactBody": {
+    "description": "Body text for legal contact card"
+  },
+  "legalContactEmail": "support@assistify.ai",
+  "@legalContactEmail": {
+    "description": "Support email address"
+  },
+  "legalLastUpdatedDate": "November 21, 2025",
+  "@legalLastUpdatedDate": {
+    "description": "Date shown in last-updated label for legal screens"
+  },
+  "privacyPolicyIntroParagraph1": "Assistify is a multimodal assistant built to keep seniors safe and confident while navigating smartphones.",
+  "@privacyPolicyIntroParagraph1": {
+    "description": "Privacy policy intro first paragraph"
+  },
+  "privacyPolicyIntroParagraph2": "This privacy policy explains what information we process, why we need it, and the choices you have when using Assistify.",
+  "@privacyPolicyIntroParagraph2": {
+    "description": "Privacy policy intro second paragraph"
+  },
+  "privacySectionDataWeCollectTitle": "Information we collect",
+  "@privacySectionDataWeCollectTitle": {
+    "description": "Privacy policy data collection section title"
+  },
+  "privacySectionDataWeCollectBody1": "We only process information that helps deliver context-aware guidance, personalize accessibility, and protect you from scams.",
+  "@privacySectionDataWeCollectBody1": {
+    "description": "Privacy policy data collection section body"
+  },
+  "privacyDataWeCollectBulletScreen": "Screen understanding signals such as temporary captures, recognized UI elements, and safety flags generated while Assistify is guiding you.",
+  "@privacyDataWeCollectBulletScreen": {
+    "description": "Bullet describing screen data"
+  },
+  "privacyDataWeCollectBulletAudio": "Voice interactions, transcripts, and audio-level indicators required to understand your questions and respond through speech.",
+  "@privacyDataWeCollectBulletAudio": {
+    "description": "Bullet describing audio data"
+  },
+  "privacyDataWeCollectBulletPreferences": "Accessibility preferences, language selections, and onboarding completion status stored on-device to keep your experience consistent.",
+  "@privacyDataWeCollectBulletPreferences": {
+    "description": "Bullet describing preference data"
+  },
+  "privacyDataWeCollectBulletDiagnostics": "Diagnostic logs, performance metrics, and crash reports that help us maintain reliability. These never include full screen recordings unless you choose to share them with support.",
+  "@privacyDataWeCollectBulletDiagnostics": {
+    "description": "Bullet describing diagnostics data"
+  },
+  "privacyHowWeUseTitle": "How we use information",
+  "@privacyHowWeUseTitle": {
+    "description": "Section title for how information is used"
+  },
+  "privacyHowWeUseBody1": "We use the data above to provide real-time guidance, adapt recommendations to your preferences, detect scams, and keep the service running smoothly.",
+  "@privacyHowWeUseBody1": {
+    "description": "How we use information paragraph 1"
+  },
+  "privacyHowWeUseBody2": "Aggregated and de-identified analytics help us prioritize new accessibility features without identifying you personally.",
+  "@privacyHowWeUseBody2": {
+    "description": "How we use information paragraph 2"
+  },
+  "privacySharingTitle": "When we share information",
+  "@privacySharingTitle": {
+    "description": "Section title for information sharing"
+  },
+  "privacySharingBody1": "We do not sell your personal data. We only share limited information when necessary to operate the service or comply with the law.",
+  "@privacySharingBody1": {
+    "description": "Information sharing paragraph"
+  },
+  "privacySharingBulletVendors": "Trusted infrastructure and processing partners who host storage, speech, or safety services under strict contractual safeguards.",
+  "@privacySharingBulletVendors": {
+    "description": "Vendors bullet"
+  },
+  "privacySharingBulletCompliance": "Public authorities when legally required to respond to valid law-enforcement or safety requests.",
+  "@privacySharingBulletCompliance": {
+    "description": "Compliance bullet"
+  },
+  "privacySharingBulletConsent": "Third parties you explicitly authorize, such as caregivers you invite to review a conversation or recording.",
+  "@privacySharingBulletConsent": {
+    "description": "Consent bullet"
+  },
+  "privacySafetyTitle": "Safety and scam protection",
+  "@privacySafetyTitle": {
+    "description": "Safety section title"
+  },
+  "privacySafetyBody1": "Assistify analyzes screen content to warn you about suspicious links, deceptive prompts, or potentially harmful actions before you tap.",
+  "@privacySafetyBody1": {
+    "description": "Safety paragraph 1"
+  },
+  "privacySafetyBody2": "When we detect high-risk activity we may temporarily store relevant snippets so our trust team can investigate patterns of abuse.",
+  "@privacySafetyBody2": {
+    "description": "Safety paragraph 2"
+  },
+  "privacyStorageTitle": "Storage and retention",
+  "@privacyStorageTitle": {
+    "description": "Storage section title"
+  },
+  "privacyStorageBody1": "Most information, including preferences and histories, is stored locally on your device. Cloud backups are encrypted in transit and at rest.",
+  "@privacyStorageBody1": {
+    "description": "Storage paragraph 1"
+  },
+  "privacyStorageBody2": "We retain transcripts, recordings, and diagnostics only as long as needed to provide the service or as required by law. You can delete them at any time from the history screens.",
+  "@privacyStorageBody2": {
+    "description": "Storage paragraph 2"
+  },
+  "privacyChoicesTitle": "Your choices and controls",
+  "@privacyChoicesTitle": {
+    "description": "Choices section title"
+  },
+  "privacyChoicesBody1": "Assistify was built to give you clear controls over your information.",
+  "@privacyChoicesBody1": {
+    "description": "Choices paragraph"
+  },
+  "privacyChoicesBulletPermissions": "Adjust microphone and screen permissions directly in system settings. Assistify will always explain why a permission is required.",
+  "@privacyChoicesBulletPermissions": {
+    "description": "Permissions choice bullet"
+  },
+  "privacyChoicesBulletHistory": "Review, export, or delete individual conversations and screen recordings from their respective history pages.",
+  "@privacyChoicesBulletHistory": {
+    "description": "History choice bullet"
+  },
+  "privacyChoicesBulletPreferences": "Update accessibility preferences—such as large text, slower speech, or high contrast—without affecting stored data.",
+  "@privacyChoicesBulletPreferences": {
+    "description": "Preferences choice bullet"
+  },
+  "privacyChoicesBulletContact": "Contact us if you need help accessing, correcting, or limiting any information we hold about you.",
+  "@privacyChoicesBulletContact": {
+    "description": "Contact choice bullet"
+  },
+  "privacyChildrenTitle": "Children’s privacy",
+  "@privacyChildrenTitle": {
+    "description": "Children section title"
+  },
+  "privacyChildrenBody1": "Assistify is intended for individuals 13 years and older. We do not knowingly collect personal data from children and will delete any such data if we learn a minor is using the service without guardian consent.",
+  "@privacyChildrenBody1": {
+    "description": "Children paragraph"
+  },
+  "privacyInternationalTitle": "International data transfers",
+  "@privacyInternationalTitle": {
+    "description": "International transfers title"
+  },
+  "privacyInternationalBody1": "Assistify may process data in the United States and other locations where our partners operate. We apply comparable safeguards regardless of where data is stored.",
+  "@privacyInternationalBody1": {
+    "description": "International transfers paragraph"
+  },
+  "privacyChangesTitle": "How we’ll notify you about changes",
+  "@privacyChangesTitle": {
+    "description": "Changes section title"
+  },
+  "privacyChangesBody1": "We may update this policy to reflect new features or regulatory requirements. Material updates will be highlighted inside the app and through release notes.",
+  "@privacyChangesBody1": {
+    "description": "Changes paragraph 1"
+  },
+  "privacyChangesBody2": "If you continue using Assistify after a revision becomes effective, you agree to the updated policy.",
+  "@privacyChangesBody2": {
+    "description": "Changes paragraph 2"
+  },
+  "legalAcceptanceTitle": "Acceptance of these terms",
+  "@legalAcceptanceTitle": {
+    "description": "Terms acceptance section title"
+  },
+  "termsIntroParagraph1": "These Terms of Service govern your use of the Assistify mobile application and any related services.",
+  "@termsIntroParagraph1": {
+    "description": "Terms intro first paragraph"
+  },
+  "termsIntroParagraph2": "By installing, accessing, or using Assistify you agree to be bound by these Terms and our Privacy Policy.",
+  "@termsIntroParagraph2": {
+    "description": "Terms intro second paragraph"
+  },
+  "termsAcceptanceBody1": "If you do not agree with these Terms, do not use the service. We may update the Terms as the product evolves, and your continued use means you accept the revised version.",
+  "@termsAcceptanceBody1": {
+    "description": "Terms acceptance body text"
+  },
+  "termsSectionServiceTitle": "Description of the service",
+  "@termsSectionServiceTitle": {
+    "description": "Service section title"
+  },
+  "termsSectionServiceBody1": "Assistify provides context-aware guidance by combining screen understanding, speech recognition, and conversational AI to help seniors complete tasks safely.",
+  "@termsSectionServiceBody1": {
+    "description": "Service body paragraph 1"
+  },
+  "termsSectionServiceBody2": "Assistify does not replace professional caregivers, medical providers, or financial advisors. You remain responsible for decisions you make based on the guidance provided.",
+  "@termsSectionServiceBody2": {
+    "description": "Service body paragraph 2"
+  },
+  "termsSectionEligibilityTitle": "Eligibility and onboarding",
+  "@termsSectionEligibilityTitle": {
+    "description": "Eligibility section title"
+  },
+  "termsSectionEligibilityBody1": "You must be at least 13 years old, reside in a region where Assistify is available, and have the legal capacity to enter these Terms.",
+  "@termsSectionEligibilityBody1": {
+    "description": "Eligibility paragraph 1"
+  },
+  "termsSectionEligibilityBody2": "To unlock full functionality you must complete onboarding, grant required permissions, and ensure device compatibility.",
+  "@termsSectionEligibilityBody2": {
+    "description": "Eligibility paragraph 2"
+  },
+  "termsSectionPermissionsTitle": "Permissions and user responsibilities",
+  "@termsSectionPermissionsTitle": {
+    "description": "Permissions section title"
+  },
+  "termsSectionPermissionsBody1": "Assistify requires microphone access, screen recording access, and stable connectivity to deliver guidance. You agree to:",
+  "@termsSectionPermissionsBody1": {
+    "description": "Permissions paragraph"
+  },
+  "termsSectionPermissionsBulletAccurateInfo": "Provide accurate information when asked about your device, goals, or safety concerns.",
+  "@termsSectionPermissionsBulletAccurateInfo": {
+    "description": "Permissions bullet accurate info"
+  },
+  "termsSectionPermissionsBulletEnvironment": "Use the app in environments where screen sharing is permitted and does not expose confidential data without consent.",
+  "@termsSectionPermissionsBulletEnvironment": {
+    "description": "Permissions bullet environment"
+  },
+  "termsSectionPermissionsBulletNotifications": "Review and follow the safety prompts Assistify surfaces before acting on them.",
+  "@termsSectionPermissionsBulletNotifications": {
+    "description": "Permissions bullet notifications"
+  },
+  "termsSectionAcceptableUseTitle": "Acceptable use",
+  "@termsSectionAcceptableUseTitle": {
+    "description": "Acceptable use section title"
+  },
+  "termsSectionAcceptableUseBody1": "You agree not to misuse Assistify or help others do so. Prohibited conduct includes:",
+  "@termsSectionAcceptableUseBody1": {
+    "description": "Acceptable use paragraph"
+  },
+  "termsAcceptableUseBulletMalicious": "Reverse engineering, probing, or interfering with Assistify’s infrastructure or security safeguards.",
+  "@termsAcceptableUseBulletMalicious": {
+    "description": "Acceptable use bullet malicious"
+  },
+  "termsAcceptableUseBulletScams": "Using the service to plan, execute, or amplify scams, fraud, or other deceptive practices.",
+  "@termsAcceptableUseBulletScams": {
+    "description": "Acceptable use bullet scams"
+  },
+  "termsAcceptableUseBulletUnlawful": "Uploading or sharing content that infringes intellectual property rights or violates applicable laws.",
+  "@termsAcceptableUseBulletUnlawful": {
+    "description": "Acceptable use bullet unlawful"
+  },
+  "termsAcceptableUseBulletInterfere": "Attempting to overload networks, harvest data, or disrupt other users’ experience.",
+  "@termsAcceptableUseBulletInterfere": {
+    "description": "Acceptable use bullet interfere"
+  },
+  "termsSectionAIGuidanceTitle": "AI guidance and limitations",
+  "@termsSectionAIGuidanceTitle": {
+    "description": "AI guidance section title"
+  },
+  "termsSectionAIGuidanceBody1": "Assistify relies on AI models and real-time screen understanding. While we strive for accuracy, AI-generated guidance may occasionally be incorrect or outdated.",
+  "@termsSectionAIGuidanceBody1": {
+    "description": "AI guidance paragraph"
+  },
+  "termsSectionAIGuidanceBulletAccuracy": "Information provided is for assistance only and may not reflect the latest user interface changes.",
+  "@termsSectionAIGuidanceBulletAccuracy": {
+    "description": "AI guidance bullet accuracy"
+  },
+  "termsSectionAIGuidanceBulletVerification": "You remain responsible for reviewing instructions before acting, especially when sending money or sharing personal data.",
+  "@termsSectionAIGuidanceBulletVerification": {
+    "description": "AI guidance bullet verification"
+  },
+  "termsSectionAIGuidanceBulletEmergencies": "Assistify is not an emergency service. Call your local authorities in case of urgent medical, safety, or financial threats.",
+  "@termsSectionAIGuidanceBulletEmergencies": {
+    "description": "AI guidance bullet emergencies"
+  },
+  "termsSectionPrivacyTitle": "Privacy and security",
+  "@termsSectionPrivacyTitle": {
+    "description": "Privacy section title"
+  },
+  "termsSectionPrivacyBody1": "Use of Assistify is also governed by our Privacy Policy, which explains how we collect and protect personal data.",
+  "@termsSectionPrivacyBody1": {
+    "description": "Privacy section body"
+  },
+  "termsSectionThirdPartyTitle": "Third-party services and links",
+  "@termsSectionThirdPartyTitle": {
+    "description": "Third-party section title"
+  },
+  "termsSectionThirdPartyBody1": "Assistify may guide you through third-party apps or websites. Those services are governed by their own terms and privacy policies.",
+  "@termsSectionThirdPartyBody1": {
+    "description": "Third-party section body"
+  },
+  "termsSectionAvailabilityTitle": "Service availability and changes",
+  "@termsSectionAvailabilityTitle": {
+    "description": "Availability section title"
+  },
+  "termsSectionAvailabilityBody1": "We may add, remove, or change features, and we may suspend the service to address maintenance or security issues.",
+  "@termsSectionAvailabilityBody1": {
+    "description": "Availability paragraph 1"
+  },
+  "termsSectionAvailabilityBody2": "Assistify is provided on an as-available basis. We are not liable for delays or failures caused by events outside our control.",
+  "@termsSectionAvailabilityBody2": {
+    "description": "Availability paragraph 2"
+  },
+  "termsSectionTerminationTitle": "Termination",
+  "@termsSectionTerminationTitle": {
+    "description": "Termination section title"
+  },
+  "termsSectionTerminationBody1": "You may stop using Assistify at any time. Delete the app to revoke its permissions and remove local data.",
+  "@termsSectionTerminationBody1": {
+    "description": "Termination paragraph 1"
+  },
+  "termsSectionTerminationBody2": "We may suspend or terminate access if you violate these Terms, misuse permissions, or compromise the safety of others.",
+  "@termsSectionTerminationBody2": {
+    "description": "Termination paragraph 2"
+  },
+  "termsSectionDisclaimersTitle": "Disclaimers and limitation of liability",
+  "@termsSectionDisclaimersTitle": {
+    "description": "Disclaimers section title"
+  },
+  "termsSectionDisclaimersBody1": "Assistify is provided “as is” without warranties of accuracy, reliability, or fitness for a particular purpose.",
+  "@termsSectionDisclaimersBody1": {
+    "description": "Disclaimers paragraph 1"
+  },
+  "termsSectionDisclaimersBody2": "To the extent permitted by law, Assistify and its partners will not be liable for indirect, incidental, or consequential damages arising from your use of the service.",
+  "@termsSectionDisclaimersBody2": {
+    "description": "Disclaimers paragraph 2"
+  },
+  "termsSectionGoverningLawTitle": "Governing law",
+  "@termsSectionGoverningLawTitle": {
+    "description": "Governing law section title"
+  },
+  "termsSectionGoverningLawBody1": "These Terms are governed by the laws of the State of California, excluding its conflict-of-law rules, unless the laws of your jurisdiction require otherwise.",
+  "@termsSectionGoverningLawBody1": {
+    "description": "Governing law paragraph"
   }
 }
 

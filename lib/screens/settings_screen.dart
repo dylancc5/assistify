@@ -6,7 +6,9 @@ import '../constants/text_styles.dart';
 import '../providers/app_state_provider.dart';
 import '../utils/localization_helper.dart';
 import 'history_screen.dart';
+import 'privacy_policy_screen.dart';
 import 'screen_recording_history_screen.dart';
+import 'terms_of_service_screen.dart';
 
 /// Settings screen with preferences and options
 class SettingsScreen extends StatelessWidget {
@@ -83,14 +85,14 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text(
               l10n.conversationHistory,
-              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
             const SizedBox(height: AppDimensions.sm),
             Text(
               l10n.viewYourPastConversations,
-              style: AppTextStyles.body.copyWith(
-                color: colors.textSecondary,
-              ),
+              style: AppTextStyles.body.copyWith(color: colors.textSecondary),
             ),
             const SizedBox(height: AppDimensions.md),
             SizedBox(
@@ -105,7 +107,9 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primaryBlue.withValues(alpha: colors.isHighContrast ? 0.2 : 0.1),
+                  backgroundColor: colors.primaryBlue.withValues(
+                    alpha: colors.isHighContrast ? 0.2 : 0.1,
+                  ),
                   foregroundColor: colors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -128,7 +132,10 @@ class SettingsScreen extends StatelessWidget {
   }
 
   /// Build screen recording history section
-  Widget _buildScreenRecordingHistorySection(BuildContext context, AppColorScheme colors) {
+  Widget _buildScreenRecordingHistorySection(
+    BuildContext context,
+    AppColorScheme colors,
+  ) {
     final l10n = LocalizationHelper.of(context);
     return Card(
       elevation: AppDimensions.cardElevation,
@@ -145,14 +152,14 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text(
               l10n.screenHistory,
-              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
             const SizedBox(height: AppDimensions.sm),
             Text(
               l10n.viewAndManageYourSharedScreens,
-              style: AppTextStyles.body.copyWith(
-                color: colors.textSecondary,
-              ),
+              style: AppTextStyles.body.copyWith(color: colors.textSecondary),
             ),
             const SizedBox(height: AppDimensions.md),
             SizedBox(
@@ -162,12 +169,15 @@ class SettingsScreen extends StatelessWidget {
                 onPressed: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => const ScreenRecordingHistoryScreen(),
+                      builder: (context) =>
+                          const ScreenRecordingHistoryScreen(),
                     ),
                   );
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primaryBlue.withValues(alpha: colors.isHighContrast ? 0.2 : 0.1),
+                  backgroundColor: colors.primaryBlue.withValues(
+                    alpha: colors.isHighContrast ? 0.2 : 0.1,
+                  ),
                   foregroundColor: colors.primaryBlue,
                   elevation: 0,
                   shape: RoundedRectangleBorder(
@@ -211,7 +221,9 @@ class SettingsScreen extends StatelessWidget {
               children: [
                 Text(
                   l10n.preferences,
-                  style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+                  style: AppTextStyles.bodyLarge.copyWith(
+                    color: colors.textPrimary,
+                  ),
                 ),
                 const SizedBox(height: AppDimensions.sm),
 
@@ -344,10 +356,7 @@ class SettingsScreen extends StatelessWidget {
           const SizedBox(width: AppDimensions.sm),
           Padding(
             padding: const EdgeInsets.only(top: 2),
-            child: Switch(
-              value: value,
-              onChanged: onChanged,
-            ),
+            child: Switch(value: value, onChanged: onChanged),
           ),
         ],
       ),
@@ -372,12 +381,16 @@ class SettingsScreen extends StatelessWidget {
           children: [
             Text(
               l10n.aboutAssistify,
-              style: AppTextStyles.bodyLarge.copyWith(color: colors.textPrimary),
+              style: AppTextStyles.bodyLarge.copyWith(
+                color: colors.textPrimary,
+              ),
             ),
             const SizedBox(height: AppDimensions.xs),
             Text(
               l10n.version('1.0.0'),
-              style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
+              style: AppTextStyles.caption.copyWith(
+                color: colors.textSecondary,
+              ),
             ),
             const SizedBox(height: AppDimensions.md),
 
@@ -386,9 +399,10 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.privacy_tip,
               title: l10n.privacyPolicy,
               onTap: () {
-                // TODO: Open privacy policy
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.comingSoon(l10n.privacyPolicy))),
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const PrivacyPolicyScreen(),
+                  ),
                 );
               },
               colors: colors,
@@ -401,10 +415,9 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.description,
               title: l10n.termsOfService,
               onTap: () {
-                // TODO: Open terms of service
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(l10n.comingSoon(l10n.termsOfService)),
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (context) => const TermsOfServiceScreen(),
                   ),
                 );
               },
@@ -418,7 +431,6 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.feedback,
               title: l10n.sendFeedback,
               onTap: () {
-                // TODO: Open feedback form
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(content: Text(l10n.comingSoon(l10n.sendFeedback))),
                 );
@@ -452,11 +464,7 @@ class SettingsScreen extends StatelessWidget {
                 style: AppTextStyles.body.copyWith(color: colors.textPrimary),
               ),
             ),
-            Icon(
-              Icons.chevron_right,
-              color: colors.textSecondary,
-              size: 24,
-            ),
+            Icon(Icons.chevron_right, color: colors.textSecondary, size: 24),
           ],
         ),
       ),

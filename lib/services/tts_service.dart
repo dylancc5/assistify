@@ -4,6 +4,21 @@ import 'package:flutter/services.dart';
 /// Service for text-to-speech using iOS AVSpeechSynthesizer
 class TTSService {
   static const _methodChannel = MethodChannel('com.assistify/tts');
+  static const _audioLevelEventChannel = EventChannel('com.assistify/tts_audio_levels');
+
+  // Cache the broadcast stream
+  Stream<double>? _audioLevelStream;
+
+  /// Stream of TTS audio levels (0.0 - 1.0)
+  Stream<double> get audioLevelStream {
+    _audioLevelStream ??= _audioLevelEventChannel.receiveBroadcastStream().map((level) {
+      if (level is num) {
+        return level.toDouble();
+      }
+      return 0.0;
+    }).asBroadcastStream();
+    return _audioLevelStream!;
+  }
 
   /// Speak the given text
   /// [languageCode] should be 'en-US' or 'zh-Hans'
