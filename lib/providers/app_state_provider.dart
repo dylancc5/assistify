@@ -2,11 +2,11 @@ import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/permission_service.dart';
-import '../services/recording_service.dart';
 import '../services/storage_service.dart';
 import '../services/speech_service.dart';
 import '../services/gemini_service.dart';
 import '../services/tts_service.dart';
+import '../services/screen_stream_service.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
 import '../models/message.dart';
@@ -21,11 +21,11 @@ enum VoiceAgentState { resting, listening, thinking, speaking }
 /// Main app state provider
 class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   final PermissionService _permissionService;
-  final RecordingService _recordingService;
   final StorageService _storageService;
   final SpeechService _speechService;
   final GeminiService _geminiService;
   final TTSService _ttsService;
+  final ScreenStreamService _screenStreamService;
 
   // Permission states
   PermissionState _screenRecordingPermission = PermissionState.notDetermined;
@@ -84,17 +84,17 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   AppStateProvider({
     PermissionService? permissionService,
-    RecordingService? recordingService,
     StorageService? storageService,
     SpeechService? speechService,
     GeminiService? geminiService,
     TTSService? ttsService,
+    ScreenStreamService? screenStreamService,
   }) : _permissionService = permissionService ?? PermissionService(),
-       _recordingService = recordingService ?? RecordingService(),
        _storageService = storageService ?? StorageService(),
        _speechService = speechService ?? SpeechService(),
        _geminiService = geminiService ?? GeminiService(),
-       _ttsService = ttsService ?? TTSService();
+       _ttsService = ttsService ?? TTSService(),
+       _screenStreamService = screenStreamService ?? ScreenStreamService();
 
   // Getters
   PermissionState get screenRecordingPermission => _screenRecordingPermission;
@@ -215,33 +215,18 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
   }
 
-  /// Toggle screen recording
-  /// Note: Screen recording can only be started when chat is active
+  /// Toggle screen recording/capture
+  /// Note: Screen capture can only be started when chat is active
   Future<void> toggleScreenRecording(BuildContext? context) async {
     if (_isScreenRecordingActive) {
-      final recordingInfo = await _recordingService.stopRecording();
+      // Stop frame capture for Gemini context
+      await _screenStreamService.stopCapture();
       _isScreenRecordingActive = false;
-
-      // Save the recording to history if we got valid info
-      if (recordingInfo != null && recordingInfo['filePath'] != null) {
-        final recording = ScreenRecording(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          filePath: recordingInfo['filePath'] as String,
-          timestamp: DateTime.now(),
-          duration: Duration(
-            milliseconds: recordingInfo['durationMs'] as int? ?? 0,
-          ),
-          fileSize: recordingInfo['fileSize'] as int? ?? 0,
-        );
-        await _storageService.addScreenRecording(recording);
-        _screenRecordings = await _storageService.loadScreenRecordings();
-      }
-
       notifyListeners();
       return;
     }
 
-    // Screen recording can only be started when chat is active
+    // Screen capture can only be started when chat is active
     if (!_isChatActive) {
       return;
     }
@@ -269,13 +254,14 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         }
       }
 
-      // If still not granted, don't start recording
+      // If still not granted, don't start capture
       if (_screenRecordingPermission != PermissionState.granted) {
         return;
       }
     }
 
-    final success = await _recordingService.startRecording();
+    // Start frame capture for Gemini context
+    final success = await _screenStreamService.startCapture();
     _isScreenRecordingActive = success;
     notifyListeners();
   }
@@ -343,37 +329,38 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     }
     _speechPermission = PermissionState.granted;
 
-    // Start speech recognition
+    // Start speech recognition first (higher priority)
     final started = await _speechService.startListening(
       languageCode: _preferences.languageCode,
     );
-    if (started) {
-      _isChatActive = true;
-      _chatStartTime = DateTime.now();
-      _isMicrophoneMuted = false;
-      _voiceAgentState = VoiceAgentState.listening;
-
-      // Initialize message tracking
-      _currentMessages = [];
-      _currentMessageStartTime = DateTime.now();
-
-      // Listen to audio level stream
-      _audioLevelSubscription?.cancel();
-      _audioLevelSamples = [];
-      _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
-        _audioLevel = level;
-        _audioLevelSamples.add(level);
-        notifyListeners();
-      });
-
-      // Listen to speech events (segment complete on silence)
-      _speechEventSubscription?.cancel();
-      _speechEventSubscription = _speechService.speechEventStream.listen((
-        event,
-      ) {
-        _handleSpeechEvent(event);
-      });
+    if (!started) {
+      notifyListeners();
+      return;
     }
+
+    _isChatActive = true;
+    _chatStartTime = DateTime.now();
+    _isMicrophoneMuted = false;
+    _voiceAgentState = VoiceAgentState.listening;
+
+    // Initialize message tracking
+    _currentMessages = [];
+    _currentMessageStartTime = DateTime.now();
+
+    // Listen to audio level stream
+    _audioLevelSubscription?.cancel();
+    _audioLevelSamples = [];
+    _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
+      _audioLevel = level;
+      _audioLevelSamples.add(level);
+      notifyListeners();
+    });
+
+    // Listen to speech events (segment complete on silence)
+    _speechEventSubscription?.cancel();
+    _speechEventSubscription = _speechService.speechEventStream.listen((event) {
+      _handleSpeechEvent(event);
+    });
 
     notifyListeners();
   }
@@ -422,9 +409,10 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     } else if (eventType == 'recognitionStopped') {
       // Recognition stopped unexpectedly, try to restart if chat is still active
-      if (_isChatActive && !_isMicrophoneMuted) {
+      // But don't restart while agent is speaking (we'll restart after TTS finishes)
+      if (_isChatActive && !_isMicrophoneMuted && !_ignoringSTT) {
         Future.delayed(const Duration(milliseconds: 500), () async {
-          if (_isChatActive && !_isMicrophoneMuted) {
+          if (_isChatActive && !_isMicrophoneMuted && !_ignoringSTT) {
             await _speechService.startListening(
               languageCode: _preferences.languageCode,
             );
@@ -433,9 +421,10 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       }
     } else if (eventType == 'interruptionEnded') {
       // Audio interruption ended (e.g., phone call ended), restart listening
-      if (_isChatActive && !_isMicrophoneMuted) {
+      // But don't restart while agent is speaking
+      if (_isChatActive && !_isMicrophoneMuted && !_ignoringSTT) {
         Future.delayed(const Duration(milliseconds: 300), () async {
-          if (_isChatActive && !_isMicrophoneMuted) {
+          if (_isChatActive && !_isMicrophoneMuted && !_ignoringSTT) {
             final started = await _speechService.startListening(
               languageCode: _preferences.languageCode,
             );
@@ -479,45 +468,10 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Print audio level stats for the current segment
   void _printAudioStats() {
-    if (_audioLevelSamples.isEmpty) return;
-
-    final samples = List<double>.from(_audioLevelSamples);
-    samples.sort();
-
-    final min = samples.first;
-    final max = samples.last;
-    final avg = samples.reduce((a, b) => a + b) / samples.length;
-    final median = samples.length.isOdd
-        ? samples[samples.length ~/ 2]
-        : (samples[samples.length ~/ 2 - 1] + samples[samples.length ~/ 2]) / 2;
-
-    debugPrint(
-      'User audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
-    );
-
-    // Clear samples for next segment
     _audioLevelSamples = [];
   }
 
-  /// Print TTS audio level stats
   void _printTTSAudioStats() {
-    if (_ttsAudioLevelSamples.isEmpty) return;
-
-    final samples = List<double>.from(_ttsAudioLevelSamples);
-    samples.sort();
-
-    final min = samples.first;
-    final max = samples.last;
-    final avg = samples.reduce((a, b) => a + b) / samples.length;
-    final median = samples.length.isOdd
-        ? samples[samples.length ~/ 2]
-        : (samples[samples.length ~/ 2 - 1] + samples[samples.length ~/ 2]) / 2;
-
-    debugPrint(
-      'Agent audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
-    );
-
-    // Clear samples for next segment
     _ttsAudioLevelSamples = [];
   }
 
@@ -536,78 +490,103 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     notifyListeners();
 
     // Run async without awaiting - allows speech recognition to continue
-    _geminiService
-        .sendMessage(message)
-        .then((response) async {
-          _geminiResponse = response;
-          _isGeminiLoading = false;
+    _sampleAndSendToGemini(message);
+  }
 
-          // Start typewriter animation
-          _startTypewriterAnimation();
+  /// Sample screenshots and send message to Gemini
+  Future<void> _sampleAndSendToGemini(String message) async {
+    try {
+      // Sample screenshots from buffer (clears buffer after sampling)
+      final screenshots = await _screenStreamService.sampleScreenshots(
+        maxSamples: 10,
+      );
 
-          // Add Gemini response as a message in the conversation
-          if (response != null && response.isNotEmpty) {
-            final agentMessage = Message(
-              id: '${DateTime.now().millisecondsSinceEpoch}_agent',
-              text: response,
-              timestamp: DateTime.now(),
-              sender: MessageSender.agent,
-            );
-            _currentMessages.add(agentMessage);
+      // Send to Gemini with or without screenshots
+      final String? response;
+      if (screenshots.isNotEmpty) {
+        response = await _geminiService.sendMessageWithScreenshots(
+          message,
+          screenshots,
+        );
+      } else {
+        response = await _geminiService.sendMessage(message);
+      }
 
-            // Set flag to ignore STT input while speaking
-            // STT keeps running but we discard its output (it's just hearing TTS)
-            _ignoringSTT = true;
+      _geminiResponse = response;
+      _isGeminiLoading = false;
 
-            // Set speaking state
-            _voiceAgentState = VoiceAgentState.speaking;
-            notifyListeners();
+      // Start typewriter animation
+      _startTypewriterAnimation();
 
-            // Start collecting TTS audio levels
-            _ttsAudioLevelSamples = [];
-            _ttsAudioLevelSubscription?.cancel();
-            _ttsAudioLevelSubscription = _ttsService.audioLevelStream.listen((
-              level,
-            ) {
-              _ttsAudioLevelSamples.add(level);
-            });
+      // Add Gemini response as a message in the conversation
+      if (response != null && response.isNotEmpty) {
+        final agentMessage = Message(
+          id: '${DateTime.now().millisecondsSinceEpoch}_agent',
+          text: response,
+          timestamp: DateTime.now(),
+          sender: MessageSender.agent,
+        );
+        _currentMessages.add(agentMessage);
 
-            await _ttsService.speak(
-              text: response,
-              languageCode: _preferences.languageCode,
-              slowerSpeech: _preferences.slowerSpeechEnabled,
-            );
+        // Set flag to block any STT events while agent is speaking
+        _ignoringSTT = true;
 
-            // Stop collecting and print TTS stats
-            _ttsAudioLevelSubscription?.cancel();
-            _ttsAudioLevelSubscription = null;
-            _printTTSAudioStats();
+        // Stop STT before speaking to clear cache and prevent garbage collection
+        if (_isChatActive && !_isMicrophoneMuted) {
+          await _speechService.stopListening();
+        }
 
-            // Restart STT to clear any garbage collected while agent was speaking
-            if (_isChatActive && !_isMicrophoneMuted) {
-              await _speechService.stopListening();
-              // Small delay to ensure clean state before accepting input again
-              await Future.delayed(const Duration(milliseconds: 100));
-              // Clear audio samples collected during agent speech (it's just TTS noise)
-              _audioLevelSamples = [];
-              await _speechService.startListening(
-                languageCode: _preferences.languageCode,
-              );
-              _voiceAgentState = VoiceAgentState.listening;
-              // Additional delay to let STT fully initialize before accepting input
-              await Future.delayed(const Duration(milliseconds: 50));
-              _ignoringSTT = false;
-            } else {
-              _ignoringSTT = false;
-            }
-          }
+        // Set speaking state
+        _voiceAgentState = VoiceAgentState.speaking;
+        notifyListeners();
 
-          notifyListeners();
-        })
-        .catchError((error) {
-          _isGeminiLoading = false;
+        // Start collecting TTS audio levels and update audioLevel for voice agent pulsing
+        _ttsAudioLevelSamples = [];
+        _ttsAudioLevelSubscription?.cancel();
+        _ttsAudioLevelSubscription = _ttsService.audioLevelStream.listen((
+          level,
+        ) {
+          _ttsAudioLevelSamples.add(level);
+          // Update audioLevel so voice agent circle pulses during speech
+          _audioLevel = level;
           notifyListeners();
         });
+
+        await _ttsService.speak(
+          text: response,
+          languageCode: _preferences.languageCode,
+          slowerSpeech: _preferences.slowerSpeechEnabled,
+        );
+
+        // Stop collecting and print TTS stats
+        _ttsAudioLevelSubscription?.cancel();
+        _ttsAudioLevelSubscription = null;
+        _audioLevel = 0.0;
+        _printTTSAudioStats();
+
+        // Restart STT with clean state after agent finishes speaking
+        if (_isChatActive && !_isMicrophoneMuted) {
+          // Small delay to ensure clean state before accepting input again
+          await Future.delayed(const Duration(milliseconds: 100));
+          // Clear audio samples collected during agent speech (it's just TTS noise)
+          _audioLevelSamples = [];
+          await _speechService.startListening(
+            languageCode: _preferences.languageCode,
+          );
+          _voiceAgentState = VoiceAgentState.listening;
+          // Additional delay to let STT fully initialize before accepting input
+          await Future.delayed(const Duration(milliseconds: 50));
+          _ignoringSTT = false;
+        } else {
+          _ignoringSTT = false;
+        }
+      }
+
+      notifyListeners();
+    } catch (error) {
+      _isGeminiLoading = false;
+      notifyListeners();
+    }
   }
 
   /// End chat and save conversation to history
@@ -615,25 +594,10 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Stop any TTS playback
     _ttsService.stop();
 
-    // Stop screen recording if active (screen recording only works during chat)
+    // Stop screen frame capture if active
     if (_isScreenRecordingActive) {
-      final recordingInfo = await _recordingService.stopRecording();
+      await _screenStreamService.stopCapture();
       _isScreenRecordingActive = false;
-
-      // Save the recording to history if we got valid info
-      if (recordingInfo != null && recordingInfo['filePath'] != null) {
-        final recording = ScreenRecording(
-          id: DateTime.now().millisecondsSinceEpoch.toString(),
-          filePath: recordingInfo['filePath'] as String,
-          timestamp: DateTime.now(),
-          duration: Duration(
-            milliseconds: recordingInfo['durationMs'] as int? ?? 0,
-          ),
-          fileSize: recordingInfo['fileSize'] as int? ?? 0,
-        );
-        await _storageService.addScreenRecording(recording);
-        _screenRecordings = await _storageService.loadScreenRecordings();
-      }
     }
 
     // Stop listening and get final transcript
@@ -932,9 +896,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     _speechEventSubscription?.cancel();
     _ttsAudioLevelSubscription?.cancel();
     _typewriterTimer?.cancel();
-    _recordingService.dispose();
     _speechService.dispose();
     _ttsService.dispose();
+    _screenStreamService.dispose();
     super.dispose();
   }
 }

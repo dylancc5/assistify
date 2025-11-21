@@ -17,6 +17,13 @@ import Speech
   private var outputURL: URL?
   private var recordingStartTime: Date?
 
+  // Screen capture frame buffer properties
+  private var frameBuffer: [Data] = []
+  private var frameBufferLock = NSLock()
+  private var lastFrameCaptureTime: Date?
+  private var isCapturingFrames: Bool = false
+  private let frameCaptureInterval: TimeInterval = 0.5  // 500ms between frames
+
   // Speech recognition properties
   private var speechRecognizer: SFSpeechRecognizer?
   private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
@@ -72,6 +79,22 @@ import Speech
         self.showBroadcastPicker(result: result)
       case "isBroadcasting":
         self.checkBroadcastStatus(result: result)
+      case "startFrameCapture":
+        self.startFrameCapture(result: result)
+      case "stopFrameCapture":
+        self.stopFrameCapture(result: result)
+      case "isCapturing":
+        result(self.isCapturingFrames)
+      case "sampleScreenshots":
+        let maxSamples = (call.arguments as? [String: Any])?["maxSamples"] as? Int ?? 10
+        self.sampleScreenshots(maxSamples: maxSamples, result: result)
+      case "clearBuffer":
+        self.clearFrameBuffer(result: result)
+      case "getBufferCount":
+        self.frameBufferLock.lock()
+        let count = self.frameBuffer.count
+        self.frameBufferLock.unlock()
+        result(count)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -428,6 +451,156 @@ import Speech
     result(isBroadcasting)
   }
 
+  // MARK: - Frame Capture Methods
+
+  private func startFrameCapture(result: @escaping FlutterResult) {
+    guard let recorder = screenRecorder else {
+      result(FlutterError(code: "RECORDER_UNAVAILABLE",
+                         message: "Screen recorder is not available",
+                         details: nil))
+      return
+    }
+
+    if isCapturingFrames {
+      result(FlutterError(code: "ALREADY_CAPTURING",
+                         message: "Frame capture is already in progress",
+                         details: nil))
+      return
+    }
+
+    // Clear any existing frames
+    frameBufferLock.lock()
+    frameBuffer.removeAll()
+    frameBufferLock.unlock()
+    lastFrameCaptureTime = nil
+
+    // Disable microphone for screen capture to avoid conflict with speech recognition
+    recorder.isMicrophoneEnabled = false
+
+    // Start capture handler for live frames
+    recorder.startCapture(handler: { [weak self] (sampleBuffer, bufferType, error) in
+      guard let self = self else { return }
+
+      if let error = error {
+        print("Frame capture error: \(error.localizedDescription)")
+        return
+      }
+
+      // Only process video frames
+      guard bufferType == .video else { return }
+
+      // Check if enough time has passed since last capture
+      let now = Date()
+      if let lastCapture = self.lastFrameCaptureTime,
+         now.timeIntervalSince(lastCapture) < self.frameCaptureInterval {
+        return
+      }
+      self.lastFrameCaptureTime = now
+
+      // Convert CMSampleBuffer to JPEG
+      guard let imageBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+      let ciImage = CIImage(cvPixelBuffer: imageBuffer)
+      let context = CIContext()
+
+      // Get dimensions and calculate scaled size (max 1024px on longest side for Gemini)
+      let extent = ciImage.extent
+      let maxDimension: CGFloat = 1024
+      let scale = min(maxDimension / extent.width, maxDimension / extent.height, 1.0)
+      let scaledWidth = Int(extent.width * scale)
+      let scaledHeight = Int(extent.height * scale)
+
+      guard let cgImage = context.createCGImage(ciImage, from: extent) else { return }
+
+      // Create scaled image
+      UIGraphicsBeginImageContextWithOptions(CGSize(width: scaledWidth, height: scaledHeight), true, 1.0)
+      UIImage(cgImage: cgImage).draw(in: CGRect(x: 0, y: 0, width: scaledWidth, height: scaledHeight))
+      let scaledImage = UIGraphicsGetImageFromCurrentImageContext()
+      UIGraphicsEndImageContext()
+
+      // Convert to JPEG with compression
+      guard let jpegData = scaledImage?.jpegData(compressionQuality: 0.7) else { return }
+
+      // Add to buffer
+      self.frameBufferLock.lock()
+      self.frameBuffer.append(jpegData)
+      self.frameBufferLock.unlock()
+
+    }) { error in
+      if let error = error {
+        result(FlutterError(code: "START_FAILED",
+                           message: "Failed to start frame capture: \(error.localizedDescription)",
+                           details: nil))
+      } else {
+        self.isCapturingFrames = true
+        result(true)
+      }
+    }
+  }
+
+  private func stopFrameCapture(result: @escaping FlutterResult) {
+    guard let recorder = screenRecorder else {
+      result(FlutterError(code: "RECORDER_UNAVAILABLE",
+                         message: "Screen recorder is not available",
+                         details: nil))
+      return
+    }
+
+    if !isCapturingFrames {
+      result(true)
+      return
+    }
+
+    recorder.stopCapture { [weak self] error in
+      if let error = error {
+        result(FlutterError(code: "STOP_FAILED",
+                           message: "Failed to stop frame capture: \(error.localizedDescription)",
+                           details: nil))
+      } else {
+        self?.isCapturingFrames = false
+        result(true)
+      }
+    }
+  }
+
+  private func sampleScreenshots(maxSamples: Int, result: @escaping FlutterResult) {
+    frameBufferLock.lock()
+    let bufferCount = frameBuffer.count
+
+    if bufferCount == 0 {
+      frameBufferLock.unlock()
+      result([FlutterStandardTypedData]())
+      return
+    }
+
+    // Calculate evenly distributed indices
+    var indices: [Int] = []
+    if bufferCount <= maxSamples {
+      // Return all frames if we have fewer than maxSamples
+      indices = Array(0..<bufferCount)
+    } else {
+      // Select evenly distributed frames
+      for i in 0..<maxSamples {
+        let index = (i * bufferCount) / maxSamples
+        indices.append(index)
+      }
+    }
+
+    // Get the sampled frames
+    let sampledFrames = indices.map { frameBuffer[$0] }
+    frameBufferLock.unlock()
+
+    // Return as array of FlutterStandardTypedData for transfer to Dart
+    let flutterData = sampledFrames.map { FlutterStandardTypedData(bytes: $0) }
+    result(flutterData as [Any])
+  }
+
+  private func clearFrameBuffer(result: @escaping FlutterResult) {
+    frameBufferLock.lock()
+    frameBuffer.removeAll()
+    frameBufferLock.unlock()
+    result(true)
+  }
+
   // MARK: - Speech Recognition Methods
 
   private func checkSpeechPermission(result: @escaping FlutterResult) {
@@ -576,6 +749,13 @@ import Speech
       if let error = error {
         // If there's an error, stop the audio engine
         self.stopAudioEngine()
+
+        // Notify Flutter that recognition stopped so it can restart
+        if let sink = self.speechEventSink {
+          DispatchQueue.main.async {
+            sink(["event": "recognitionStopped", "error": error.localizedDescription])
+          }
+        }
       }
     }
 

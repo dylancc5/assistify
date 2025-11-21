@@ -591,6 +591,30 @@
   "termsSectionGoverningLawBody1": "These Terms are governed by the laws of the State of California, excluding its conflict-of-law rules, unless the laws of your jurisdiction require otherwise.",
   "@termsSectionGoverningLawBody1": {
     "description": "Governing law paragraph"
+  },
+  "feedbackTitle": "Send Feedback",
+  "@feedbackTitle": {
+    "description": "Feedback dialog title"
+  },
+  "feedbackIssueLabel": "What's on your mind?",
+  "@feedbackIssueLabel": {
+    "description": "Label for feedback text field"
+  },
+  "feedbackIssueHint": "Describe your issue or suggestion...",
+  "@feedbackIssueHint": {
+    "description": "Hint text for feedback field"
+  },
+  "feedbackRatingLabel": "Rating (optional)",
+  "@feedbackRatingLabel": {
+    "description": "Label for optional rating"
+  },
+  "feedbackSubmit": "Submit",
+  "@feedbackSubmit": {
+    "description": "Submit feedback button"
+  },
+  "feedbackSent": "Thank you for your feedback!",
+  "@feedbackSent": {
+    "description": "Feedback sent confirmation"
   }
 }
 

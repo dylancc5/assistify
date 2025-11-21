@@ -543,4 +543,22 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get termsSectionGoverningLawBody1 =>
       'These Terms are governed by the laws of the State of California, excluding its conflict-of-law rules, unless the laws of your jurisdiction require otherwise.';
+
+  @override
+  String get feedbackTitle => 'Send Feedback';
+
+  @override
+  String get feedbackIssueLabel => 'What\'s on your mind?';
+
+  @override
+  String get feedbackIssueHint => 'Describe your issue or suggestion...';
+
+  @override
+  String get feedbackRatingLabel => 'Rating (optional)';
+
+  @override
+  String get feedbackSubmit => 'Submit';
+
+  @override
+  String get feedbackSent => 'Thank you for your feedback!';
 }

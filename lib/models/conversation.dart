@@ -48,13 +48,15 @@ class Conversation {
   /// Get formatted date/time string
   String get formattedDateTime {
     final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    final daysDifference = today.difference(dateOnly).inDays;
 
-    if (difference.inDays == 0) {
+    if (daysDifference == 0) {
       return 'Today, ${_formatTime(timestamp)}';
-    } else if (difference.inDays == 1) {
+    } else if (daysDifference == 1) {
       return 'Yesterday, ${_formatTime(timestamp)}';
-    } else if (difference.inDays < 7) {
+    } else if (daysDifference < 7) {
       return '${_getWeekday(timestamp)}, ${_formatTime(timestamp)}';
     } else {
       return '${timestamp.month}/${timestamp.day}/${timestamp.year}, ${_formatTime(timestamp)}';

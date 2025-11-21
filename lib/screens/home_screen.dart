@@ -18,16 +18,45 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateMixin {
   bool _hasShownVoicePrompt = false;
   final ScrollController _responseScrollController = ScrollController();
   String? _lastResponse;
   bool _autoScrollEnabled = true;
+  late AnimationController _loadingAnimationController;
+  int _loadingDotCount = 1;
+  bool _loadingDotIncreasing = true;
 
   @override
   void initState() {
     super.initState();
     _responseScrollController.addListener(_onScroll);
+    _loadingAnimationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 400),
+    )..addListener(() {
+      if (_loadingAnimationController.status == AnimationStatus.completed) {
+        setState(() {
+          if (_loadingDotIncreasing) {
+            if (_loadingDotCount >= 5) {
+              _loadingDotIncreasing = false;
+              _loadingDotCount = 4;
+            } else {
+              _loadingDotCount++;
+            }
+          } else {
+            if (_loadingDotCount <= 1) {
+              _loadingDotIncreasing = true;
+              _loadingDotCount = 2;
+            } else {
+              _loadingDotCount--;
+            }
+          }
+        });
+        _loadingAnimationController.reset();
+        _loadingAnimationController.forward();
+      }
+    });
   }
 
   void _onScroll() {
@@ -58,6 +87,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   void dispose() {
+    _loadingAnimationController.dispose();
     _responseScrollController.removeListener(_onScroll);
     _responseScrollController.dispose();
     super.dispose();
@@ -257,22 +287,37 @@ class _HomeScreenState extends State<HomeScreen> {
                       children: [
                         // Gemini response display with smooth animated size transition
                         if (showText && appState.isGeminiLoading)
-                          Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: AppDimensions.lg,
-                            ),
-                            child: Text(
-                              '...',
-                              style: AppTextStyles.body.copyWith(
-                                color: colors.textSecondary,
-                              ),
-                              textAlign: TextAlign.center,
-                            ),
+                          Builder(
+                            builder: (context) {
+                              // Start animation when loading
+                              if (!_loadingAnimationController.isAnimating) {
+                                _loadingAnimationController.forward();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: AppDimensions.lg,
+                                ),
+                                child: Text(
+                                  '.' * _loadingDotCount,
+                                  style: AppTextStyles.body.copyWith(
+                                    color: colors.textSecondary,
+                                  ),
+                                  textAlign: TextAlign.center,
+                                ),
+                              );
+                            },
                           )
                         else if (showText && appState.displayedGeminiResponse != null)
                           Expanded(
                             child: Builder(
                               builder: (context) {
+                                // Stop loading animation when response arrives
+                                if (_loadingAnimationController.isAnimating) {
+                                  _loadingAnimationController.stop();
+                                  _loadingAnimationController.reset();
+                                  _loadingDotCount = 1;
+                                  _loadingDotIncreasing = true;
+                                }
                                 // Auto-scroll when response updates (only if enabled)
                                 if (_lastResponse != appState.displayedGeminiResponse) {
                                   _lastResponse = appState.displayedGeminiResponse;

@@ -170,6 +170,12 @@
   "termsSectionDisclaimersBody1": "Assistify 按“现状”提供，不对准确性、可靠性或特定用途适用性作出任何担保。",
   "termsSectionDisclaimersBody2": "在法律允许范围内，Assistify 及其合作伙伴不对因使用本服务而产生的间接、附带或后果性损失负责。",
   "termsSectionGoverningLawTitle": "适用法律",
-  "termsSectionGoverningLawBody1": "除非您所在司法辖区另有强制规定，本条款受美国加利福尼亚州法律管辖，并排除其法律冲突规则。"
+  "termsSectionGoverningLawBody1": "除非您所在司法辖区另有强制规定，本条款受美国加利福尼亚州法律管辖，并排除其法律冲突规则。",
+  "feedbackTitle": "发送反馈",
+  "feedbackIssueLabel": "您想告诉我们什么？",
+  "feedbackIssueHint": "描述您的问题或建议...",
+  "feedbackRatingLabel": "评分（可选）",
+  "feedbackSubmit": "提交",
+  "feedbackSent": "感谢您的反馈！"
 }
 

@@ -63,7 +63,6 @@ GUIDANCE STYLE:
       _chatSession = _model!.startChat();
       _isInitialized = true;
 
-      debugPrint('Gemini service initialized successfully');
       return true;
     } catch (e) {
       debugPrint('Error initializing Gemini service: $e');
@@ -92,6 +91,50 @@ GUIDANCE STYLE:
       return null;
     } catch (e) {
       debugPrint('Error sending message to Gemini: $e');
+      return 'Error: Unable to get response from Gemini';
+    }
+  }
+
+  /// Send a message to Gemini with screenshots for visual context
+  /// Screenshots are JPEG images captured from the user's screen
+  Future<String?> sendMessageWithScreenshots(
+    String message,
+    List<Uint8List> screenshots,
+  ) async {
+    if (!_isInitialized || _chatSession == null) {
+      debugPrint('Gemini service not initialized');
+      return null;
+    }
+
+    try {
+      // Build content parts: text message + images
+      final List<Part> parts = [];
+
+      // Add screenshots as image parts
+      if (screenshots.isNotEmpty) {
+        for (final screenshot in screenshots) {
+          parts.add(DataPart('image/jpeg', screenshot));
+        }
+        // Add context about the images
+        parts.add(TextPart(
+          'The above images are screenshots from the user\'s screen captured over time, shown in chronological order. '
+          'Use them to understand what the user is looking at and provide relevant assistance.\n\n'
+          'User message: $message',
+        ));
+      } else {
+        parts.add(TextPart(message));
+      }
+
+      final response = await _chatSession!.sendMessage(Content.multi(parts));
+
+      final responseText = response.text;
+      if (responseText != null && responseText.isNotEmpty) {
+        return responseText;
+      }
+
+      return null;
+    } catch (e) {
+      debugPrint('Error sending message with screenshots to Gemini: $e');
       return 'Error: Unable to get response from Gemini';
     }
   }

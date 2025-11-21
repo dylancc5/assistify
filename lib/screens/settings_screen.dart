@@ -7,7 +7,6 @@ import '../providers/app_state_provider.dart';
 import '../utils/localization_helper.dart';
 import 'history_screen.dart';
 import 'privacy_policy_screen.dart';
-import 'screen_recording_history_screen.dart';
 import 'terms_of_service_screen.dart';
 
 /// Settings screen with preferences and options
@@ -44,11 +43,6 @@ class SettingsScreen extends StatelessWidget {
 
             // Conversation History Card
             _buildHistoryCard(context, colors),
-
-            const SizedBox(height: AppDimensions.md),
-
-            // Screen Recording History Card
-            _buildScreenRecordingHistorySection(context, colors),
 
             const SizedBox(height: AppDimensions.md),
 
@@ -123,74 +117,6 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 icon: const Icon(Icons.history),
                 label: Text(l10n.viewHistory),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Build screen recording history section
-  Widget _buildScreenRecordingHistorySection(
-    BuildContext context,
-    AppColorScheme colors,
-  ) {
-    final l10n = LocalizationHelper.of(context);
-    return Card(
-      elevation: AppDimensions.cardElevation,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
-        side: colors.isHighContrast
-            ? BorderSide(color: colors.border, width: 2)
-            : BorderSide.none,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(AppDimensions.md),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              l10n.screenHistory,
-              style: AppTextStyles.bodyLarge.copyWith(
-                color: colors.textPrimary,
-              ),
-            ),
-            const SizedBox(height: AppDimensions.sm),
-            Text(
-              l10n.viewAndManageYourSharedScreens,
-              style: AppTextStyles.body.copyWith(color: colors.textSecondary),
-            ),
-            const SizedBox(height: AppDimensions.md),
-            SizedBox(
-              width: double.infinity,
-              height: AppDimensions.mediumButtonHeight,
-              child: ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) =>
-                          const ScreenRecordingHistoryScreen(),
-                    ),
-                  );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: colors.primaryBlue.withValues(
-                    alpha: colors.isHighContrast ? 0.2 : 0.1,
-                  ),
-                  foregroundColor: colors.primaryBlue,
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(
-                      AppDimensions.borderRadiusSmall,
-                    ),
-                    side: colors.isHighContrast
-                        ? BorderSide(color: colors.primaryBlue, width: 2)
-                        : BorderSide.none,
-                  ),
-                ),
-                icon: const Icon(Icons.videocam),
-                label: Text(l10n.viewScreenHistory),
               ),
             ),
           ],
@@ -431,9 +357,7 @@ class SettingsScreen extends StatelessWidget {
               icon: Icons.feedback,
               title: l10n.sendFeedback,
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text(l10n.comingSoon(l10n.sendFeedback))),
-                );
+                _showFeedbackDialog(context, colors);
               },
               colors: colors,
             ),
@@ -468,6 +392,129 @@ class SettingsScreen extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+
+  /// Show feedback dialog
+  void _showFeedbackDialog(BuildContext context, AppColorScheme colors) {
+    final l10n = LocalizationHelper.of(context);
+    final issueController = TextEditingController();
+    int selectedRating = 0;
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              backgroundColor: colors.cardBackground,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppDimensions.borderRadiusMedium),
+                side: colors.isHighContrast
+                    ? BorderSide(color: colors.border, width: 2)
+                    : BorderSide.none,
+              ),
+              title: Text(
+                l10n.feedbackTitle,
+                style: AppTextStyles.heading.copyWith(color: colors.textPrimary),
+              ),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.feedbackIssueLabel,
+                      style: AppTextStyles.body.copyWith(color: colors.textPrimary),
+                    ),
+                    const SizedBox(height: AppDimensions.sm),
+                    TextField(
+                      controller: issueController,
+                      maxLines: 4,
+                      style: AppTextStyles.body.copyWith(color: colors.textPrimary),
+                      decoration: InputDecoration(
+                        hintText: l10n.feedbackIssueHint,
+                        hintStyle: AppTextStyles.body.copyWith(color: colors.textSecondary),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+                          borderSide: BorderSide(color: colors.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+                          borderSide: BorderSide(
+                            color: colors.isHighContrast ? colors.border : colors.divider,
+                            width: colors.isHighContrast ? 2 : 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+                          borderSide: BorderSide(color: colors.primaryBlue, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: colors.background,
+                      ),
+                    ),
+                    const SizedBox(height: AppDimensions.md),
+                    Text(
+                      l10n.feedbackRatingLabel,
+                      style: AppTextStyles.body.copyWith(color: colors.textPrimary),
+                    ),
+                    const SizedBox(height: AppDimensions.sm),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: List.generate(5, (index) {
+                        final starIndex = index + 1;
+                        return IconButton(
+                          icon: Icon(
+                            starIndex <= selectedRating ? Icons.star : Icons.star_border,
+                            color: starIndex <= selectedRating
+                                ? Colors.amber
+                                : colors.textSecondary,
+                            size: 32,
+                          ),
+                          onPressed: () {
+                            setState(() {
+                              selectedRating = starIndex;
+                            });
+                          },
+                        );
+                      }),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text(
+                    l10n.cancel,
+                    style: AppTextStyles.body.copyWith(color: colors.textSecondary),
+                  ),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.of(context).pop();
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text(l10n.feedbackSent),
+                        backgroundColor: colors.primaryBlue,
+                      ),
+                    );
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: colors.primaryBlue,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppDimensions.borderRadiusSmall),
+                    ),
+                  ),
+                  child: Text(l10n.feedbackSubmit),
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 }

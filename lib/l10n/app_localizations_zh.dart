@@ -503,4 +503,22 @@ class AppLocalizationsZh extends AppLocalizations {
   @override
   String get termsSectionGoverningLawBody1 =>
       '除非您所在司法辖区另有强制规定，本条款受美国加利福尼亚州法律管辖，并排除其法律冲突规则。';
+
+  @override
+  String get feedbackTitle => '发送反馈';
+
+  @override
+  String get feedbackIssueLabel => '您想告诉我们什么？';
+
+  @override
+  String get feedbackIssueHint => '描述您的问题或建议...';
+
+  @override
+  String get feedbackRatingLabel => '评分（可选）';
+
+  @override
+  String get feedbackSubmit => '提交';
+
+  @override
+  String get feedbackSent => '感谢您的反馈！';
 }

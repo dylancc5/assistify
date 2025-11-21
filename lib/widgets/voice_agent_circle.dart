@@ -197,6 +197,7 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
   Widget build(BuildContext context) {
     // Calculate audio-reactive scale - pulse during any active state
     final isActive = widget.voiceAgentState != VoiceAgentState.resting;
+    final isThinking = widget.voiceAgentState == VoiceAgentState.thinking;
     final audioScale = isActive ? 1.0 + (_smoothedAudioLevel * 0.15) : 1.0;
     final colors = widget.colors ?? const AppColorScheme();
     final currentStateColors = _getStateColors(colors);
@@ -209,8 +210,12 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
         _stateColorController,
       ]),
       builder: (context, child) {
+        // Enhanced breathing effect when thinking (1.0 to 1.08 vs normal 1.0 to 1.02)
+        final breathingScale = isThinking
+            ? 1.0 + ((_breathingAnimation.value - 1.0) * 4)
+            : _breathingAnimation.value;
         final totalScale =
-            _breathingAnimation.value * audioScale * _scaleAnimation.value;
+            breathingScale * audioScale * _scaleAnimation.value;
         final activationValue = _colorTransition.value;
         final stateTransitionValue = _stateColorTransition.value;
 

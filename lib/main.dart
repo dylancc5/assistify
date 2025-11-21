@@ -1,15 +1,12 @@
-// FIXME: Make STT never turn off, if possible; how to reset cache without restarting STT? perplexity this
+// TODO: Need Apple Developer Program to STT + screen record in the background
 
-// TODO: Find way to screen record even outside of app
-// TODO: Implement screenshot input into LLM API
+// TODO: Turn conversation history into vector embedding RAG via Supabase
+// TODO: Improve prompt engineering for better personality and responses
+//       Should be aware of its own features + limitations,
+//       note when screen capture ends, etc.
 
-// TODO: Turn conversation history into RAG
-
-// FIXME: Check other promised features to implement
-// FIXME: Replace Gemini with Baidu ERNIE
-// FIXME: Improve prompt engineering for better personality and responses
-
-// TODO: Open feedback form
+// TODO: Replace Gemini with Baidu ERNIE
+// TODO: Need to fine tune model?
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';

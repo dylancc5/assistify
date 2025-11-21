@@ -18,14 +18,16 @@ class HistoryScreen extends StatelessWidget {
     final l10n = LocalizationHelper.of(context);
     final timestamp = conversation.timestamp;
     final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    final daysDifference = today.difference(dateOnly).inDays;
 
     String dayPart;
-    if (difference.inDays == 0) {
+    if (daysDifference == 0) {
       dayPart = l10n.today;
-    } else if (difference.inDays == 1) {
+    } else if (daysDifference == 1) {
       dayPart = l10n.yesterday;
-    } else if (difference.inDays < 7) {
+    } else if (daysDifference < 7) {
       dayPart = _getLocalizedWeekday(l10n, timestamp);
     } else {
       dayPart = '${timestamp.month}/${timestamp.day}/${timestamp.year}';
@@ -347,14 +349,16 @@ class ConversationDetailScreen extends StatelessWidget {
     final l10n = LocalizationHelper.of(context);
     final timestamp = conversation.timestamp;
     final now = DateTime.now();
-    final difference = now.difference(timestamp);
+    final today = DateTime(now.year, now.month, now.day);
+    final dateOnly = DateTime(timestamp.year, timestamp.month, timestamp.day);
+    final daysDifference = today.difference(dateOnly).inDays;
 
     String dayPart;
-    if (difference.inDays == 0) {
+    if (daysDifference == 0) {
       dayPart = l10n.today;
-    } else if (difference.inDays == 1) {
+    } else if (daysDifference == 1) {
       dayPart = l10n.yesterday;
-    } else if (difference.inDays < 7) {
+    } else if (daysDifference < 7) {
       dayPart = _getLocalizedWeekday(l10n, timestamp);
     } else {
       dayPart = '${timestamp.month}/${timestamp.day}/${timestamp.year}';

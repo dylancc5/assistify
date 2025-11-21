@@ -997,6 +997,42 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'These Terms are governed by the laws of the State of California, excluding its conflict-of-law rules, unless the laws of your jurisdiction require otherwise.'**
   String get termsSectionGoverningLawBody1;
+
+  /// Feedback dialog title
+  ///
+  /// In en, this message translates to:
+  /// **'Send Feedback'**
+  String get feedbackTitle;
+
+  /// Label for feedback text field
+  ///
+  /// In en, this message translates to:
+  /// **'What\'s on your mind?'**
+  String get feedbackIssueLabel;
+
+  /// Hint text for feedback field
+  ///
+  /// In en, this message translates to:
+  /// **'Describe your issue or suggestion...'**
+  String get feedbackIssueHint;
+
+  /// Label for optional rating
+  ///
+  /// In en, this message translates to:
+  /// **'Rating (optional)'**
+  String get feedbackRatingLabel;
+
+  /// Submit feedback button
+  ///
+  /// In en, this message translates to:
+  /// **'Submit'**
+  String get feedbackSubmit;
+
+  /// Feedback sent confirmation
+  ///
+  /// In en, this message translates to:
+  /// **'Thank you for your feedback!'**
+  String get feedbackSent;
 }
 
 class _AppLocalizationsDelegate

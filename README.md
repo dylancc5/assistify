@@ -78,16 +78,7 @@ Assistify continuously monitors your smartphone screen to identify:
 - Which buttons or options are relevant to your goal
 - Potential obstacles or confusing elements
 
-### 2. Interactive Visual Guidance
-
-Rather than describing locations verbally, Assistify shows you exactly where to tap, swipe, or interact:
-
-- Highlights specific buttons with visual overlays
-- Draws arrows pointing to next steps
-- Creates bounding boxes around interactive elements
-- Provides step-by-step visual pathways through complex tasks
-
-### 3. Conversational Assistance
+### 2. Conversational Assistance
 
 Engage naturally with Assistify through voice:
 
@@ -96,7 +87,7 @@ Engage naturally with Assistify through voice:
 - Get help understanding unfamiliar slang or abbreviations in messages
 - Navigate interfaces through natural dialogue
 
-### 4. Safety & Scam Detection
+### 3. Safety & Scam Detection
 
 Assistify acts as a protective layer between you and digital threats:
 
@@ -105,7 +96,7 @@ Assistify acts as a protective layer between you and digital threats:
 - Identifies misleading advertisements disguised as interface elements
 - Prevents accidental deletions or destructive actions
 
-### 5. Personalized Learning
+### 4. Personalized Learning
 
 The more you use Assistify, the better it understands you:
 
@@ -114,7 +105,7 @@ The more you use Assistify, the better it understands you:
 - Recognizes your interaction patterns
 - Becomes increasingly efficient at predicting your needs
 
-### 6. Cross-App Continuity
+### 5. Cross-App Continuity
 
 Assistify follows you throughout your phone:
 
