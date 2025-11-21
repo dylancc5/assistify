@@ -24,11 +24,24 @@ class AppColors {
   static const Color gradientStart = Color(0xFFF8F9FA);
   static const Color gradientEnd = Color(0xFFF0F2F5);
 
-  // Voice Agent Circle Colors (Active - Blue)
+  // Voice Agent Circle Colors (Listening - Blue)
   static const Color voiceAgentGradientStart = Color(0x1A5B8FDB); // 10% opacity
   static const Color voiceAgentGradientEnd = Color(0x0D5B8FDB); // 5% opacity
   static const Color voiceAgentBorder = Color(0x4D5B8FDB); // 30% opacity
   static const Color voiceAgentIcon = Color(0x995B8FDB); // 60% opacity
+
+  // Voice Agent Circle Colors (Thinking - Red)
+  static const Color voiceAgentThinkingGradientStart = Color(0x1AFF6B6B); // 10% opacity red
+  static const Color voiceAgentThinkingGradientEnd = Color(0x0DFF6B6B); // 5% opacity red
+  static const Color voiceAgentThinkingBorder = Color(0x4DFF6B6B); // 30% opacity red
+  static const Color voiceAgentThinkingIcon = Color(0x99FF6B6B); // 60% opacity red
+  static const Color primaryRed = Color(0xFFFF6B6B);
+
+  // Voice Agent Circle Colors (Speaking - Green)
+  static const Color voiceAgentSpeakingGradientStart = Color(0x1A7EC699); // 10% opacity green
+  static const Color voiceAgentSpeakingGradientEnd = Color(0x0D7EC699); // 5% opacity green
+  static const Color voiceAgentSpeakingBorder = Color(0x4D7EC699); // 30% opacity green
+  static const Color voiceAgentSpeakingIcon = Color(0x997EC699); // 60% opacity green
 
   // Voice Agent Circle Colors (Inactive - Grey)
   static const Color voiceAgentGradientStartInactive = Color(0x1AADB5BD); // 10% opacity grey
@@ -61,11 +74,24 @@ class AppColorsHighContrast {
   static const Color gradientStart = Color(0xFFFFFFFF);
   static const Color gradientEnd = Color(0xFFE8E8E8);
 
-  // Voice Agent Circle Colors (Active - Blue)
+  // Voice Agent Circle Colors (Listening - Blue)
   static const Color voiceAgentGradientStart = Color(0x4D1E5BB8); // 30% opacity
   static const Color voiceAgentGradientEnd = Color(0x261E5BB8); // 15% opacity
   static const Color voiceAgentBorder = Color(0xFF1E5BB8); // Full opacity
   static const Color voiceAgentIcon = Color(0xFF1E5BB8); // Full opacity
+
+  // Voice Agent Circle Colors (Thinking - Red)
+  static const Color voiceAgentThinkingGradientStart = Color(0x4DC53030); // 30% opacity red
+  static const Color voiceAgentThinkingGradientEnd = Color(0x26C53030); // 15% opacity red
+  static const Color voiceAgentThinkingBorder = Color(0xFFC53030); // Full opacity red
+  static const Color voiceAgentThinkingIcon = Color(0xFFC53030); // Full opacity red
+  static const Color primaryRed = Color(0xFFC53030);
+
+  // Voice Agent Circle Colors (Speaking - Green)
+  static const Color voiceAgentSpeakingGradientStart = Color(0x4D1E7B3C); // 30% opacity green
+  static const Color voiceAgentSpeakingGradientEnd = Color(0x261E7B3C); // 15% opacity green
+  static const Color voiceAgentSpeakingBorder = Color(0xFF1E7B3C); // Full opacity green
+  static const Color voiceAgentSpeakingIcon = Color(0xFF1E7B3C); // Full opacity green
 
   // Voice Agent Circle Colors (Inactive - Grey)
   static const Color voiceAgentGradientStartInactive = Color(0x4D3D3D3D); // 30% opacity grey
@@ -119,6 +145,33 @@ class AppColorScheme {
       isHighContrast ? AppColorsHighContrast.voiceAgentBorder : AppColors.voiceAgentBorder;
   Color get voiceAgentIcon =>
       isHighContrast ? AppColorsHighContrast.voiceAgentIcon : AppColors.voiceAgentIcon;
+
+  // Thinking state colors
+  Color get voiceAgentThinkingGradientStart => isHighContrast
+      ? AppColorsHighContrast.voiceAgentThinkingGradientStart
+      : AppColors.voiceAgentThinkingGradientStart;
+  Color get voiceAgentThinkingGradientEnd => isHighContrast
+      ? AppColorsHighContrast.voiceAgentThinkingGradientEnd
+      : AppColors.voiceAgentThinkingGradientEnd;
+  Color get voiceAgentThinkingBorder =>
+      isHighContrast ? AppColorsHighContrast.voiceAgentThinkingBorder : AppColors.voiceAgentThinkingBorder;
+  Color get voiceAgentThinkingIcon =>
+      isHighContrast ? AppColorsHighContrast.voiceAgentThinkingIcon : AppColors.voiceAgentThinkingIcon;
+  Color get primaryRed =>
+      isHighContrast ? AppColorsHighContrast.primaryRed : AppColors.primaryRed;
+
+  // Speaking state colors
+  Color get voiceAgentSpeakingGradientStart => isHighContrast
+      ? AppColorsHighContrast.voiceAgentSpeakingGradientStart
+      : AppColors.voiceAgentSpeakingGradientStart;
+  Color get voiceAgentSpeakingGradientEnd => isHighContrast
+      ? AppColorsHighContrast.voiceAgentSpeakingGradientEnd
+      : AppColors.voiceAgentSpeakingGradientEnd;
+  Color get voiceAgentSpeakingBorder =>
+      isHighContrast ? AppColorsHighContrast.voiceAgentSpeakingBorder : AppColors.voiceAgentSpeakingBorder;
+  Color get voiceAgentSpeakingIcon =>
+      isHighContrast ? AppColorsHighContrast.voiceAgentSpeakingIcon : AppColors.voiceAgentSpeakingIcon;
+
   Color get voiceAgentGradientStartInactive => isHighContrast
       ? AppColorsHighContrast.voiceAgentGradientStartInactive
       : AppColors.voiceAgentGradientStartInactive;

@@ -38,6 +38,8 @@ import Speech
   private var speechSynthesizer: AVSpeechSynthesizer?
   private var ttsDelegate: TTSDelegate?
   private var ttsCompletionHandler: ((Bool) -> Void)?
+  private var ttsAudioLevelEventChannel: FlutterEventChannel?
+  private var ttsAudioLevelEventSink: FlutterEventSink?
 
   override func application(
     _ application: UIApplication,
@@ -108,6 +110,13 @@ import Speech
     speechSynthesizer = AVSpeechSynthesizer()
     ttsDelegate = TTSDelegate(appDelegate: self)
     speechSynthesizer?.delegate = ttsDelegate
+
+    // Set up event channel for TTS audio levels
+    ttsAudioLevelEventChannel = FlutterEventChannel(
+      name: "com.assistify/tts_audio_levels",
+      binaryMessenger: controller.binaryMessenger
+    )
+    ttsAudioLevelEventChannel?.setStreamHandler(TTSAudioLevelStreamHandler(appDelegate: self))
 
     ttsMethodChannel?.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else { return }
@@ -917,6 +926,18 @@ import Speech
     ttsCompletionHandler = nil
   }
 
+  // Send TTS audio level to Flutter
+  func sendTTSAudioLevel(_ level: Double) {
+    DispatchQueue.main.async {
+      self.ttsAudioLevelEventSink?(level)
+    }
+  }
+
+  // Set the TTS audio level event sink
+  func setTTSAudioLevelEventSink(_ sink: FlutterEventSink?) {
+    ttsAudioLevelEventSink = sink
+  }
+
   private func stopSpeaking(result: @escaping FlutterResult) {
     if let synthesizer = speechSynthesizer, synthesizer.isSpeaking {
       synthesizer.stopSpeaking(at: .immediate)
@@ -1010,10 +1031,58 @@ class TTSDelegate: NSObject, AVSpeechSynthesizerDelegate {
   }
 
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+    appDelegate?.sendTTSAudioLevel(0.0)
     appDelegate?.onSpeechFinished(success: true)
   }
 
   func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
+    appDelegate?.sendTTSAudioLevel(0.0)
     appDelegate?.onSpeechFinished(success: false)
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, willSpeakRangeOfSpeechString characterRange: NSRange, utterance: AVSpeechUtterance) {
+    // Generate a synthetic audio level based on the character being spoken
+    // This creates a natural-feeling pulsation effect
+    let text = utterance.speechString as NSString
+    let character = text.substring(with: characterRange)
+
+    // Vary level based on character type for more natural feel
+    var level: Double = 0.5
+    if character.rangeOfCharacter(from: .punctuationCharacters) != nil {
+      level = 0.3  // Quieter for punctuation
+    } else if character.rangeOfCharacter(from: .whitespaces) != nil {
+      level = 0.2  // Quieter for spaces
+    } else if character.uppercased() == character && character.lowercased() != character {
+      level = 0.8  // Louder for uppercase
+    } else {
+      // Add some variation based on position
+      level = 0.4 + Double.random(in: 0.0...0.4)
+    }
+
+    appDelegate?.sendTTSAudioLevel(level)
+  }
+
+  func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didStart utterance: AVSpeechUtterance) {
+    appDelegate?.sendTTSAudioLevel(0.5)
+  }
+}
+
+// MARK: - TTS Audio Level Stream Handler
+
+class TTSAudioLevelStreamHandler: NSObject, FlutterStreamHandler {
+  private weak var appDelegate: AppDelegate?
+
+  init(appDelegate: AppDelegate) {
+    self.appDelegate = appDelegate
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    appDelegate?.setTTSAudioLevelEventSink(events)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    appDelegate?.setTTSAudioLevelEventSink(nil)
+    return nil
   }
 }

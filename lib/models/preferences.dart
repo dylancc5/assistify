@@ -4,12 +4,14 @@ class UserPreferences {
   final bool slowerSpeechEnabled;
   final bool highContrastEnabled;
   final bool useSimplifiedChinese;
+  final bool showTranscribedText;
 
   const UserPreferences({
     this.largeTextEnabled = false,
     this.slowerSpeechEnabled = false,
     this.highContrastEnabled = false,
     this.useSimplifiedChinese = false,
+    this.showTranscribedText = true,
   });
 
   /// Create copy with updated values
@@ -18,12 +20,14 @@ class UserPreferences {
     bool? slowerSpeechEnabled,
     bool? highContrastEnabled,
     bool? useSimplifiedChinese,
+    bool? showTranscribedText,
   }) {
     return UserPreferences(
       largeTextEnabled: largeTextEnabled ?? this.largeTextEnabled,
       slowerSpeechEnabled: slowerSpeechEnabled ?? this.slowerSpeechEnabled,
       highContrastEnabled: highContrastEnabled ?? this.highContrastEnabled,
       useSimplifiedChinese: useSimplifiedChinese ?? this.useSimplifiedChinese,
+      showTranscribedText: showTranscribedText ?? this.showTranscribedText,
     );
   }
 
@@ -34,6 +38,7 @@ class UserPreferences {
       'slowerSpeechEnabled': slowerSpeechEnabled,
       'highContrastEnabled': highContrastEnabled,
       'useSimplifiedChinese': useSimplifiedChinese,
+      'showTranscribedText': showTranscribedText,
     };
   }
 
@@ -44,6 +49,7 @@ class UserPreferences {
       slowerSpeechEnabled: json['slowerSpeechEnabled'] as bool? ?? false,
       highContrastEnabled: json['highContrastEnabled'] as bool? ?? false,
       useSimplifiedChinese: json['useSimplifiedChinese'] as bool? ?? false,
+      showTranscribedText: json['showTranscribedText'] as bool? ?? true,
     );
   }
 

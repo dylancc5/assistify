@@ -80,6 +80,8 @@
   "clearAll": "清除全部",
   "clearAllConversations": "清除所有对话",
   "areYouSureYouWantToClearAllConversations": "您确定要清除所有对话吗？此操作无法撤销。",
-  "allConversationsCleared": "所有对话已清除"
+  "allConversationsCleared": "所有对话已清除",
+  "showResponseText": "显示回复文本",
+  "displayTranscribedAIResponsesOnScreen": "在屏幕上显示AI回复文本"
 }
 

@@ -232,4 +232,11 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get allConversationsCleared => 'All conversations cleared';
+
+  @override
+  String get showResponseText => 'Show Response Text';
+
+  @override
+  String get displayTranscribedAIResponsesOnScreen =>
+      'Display transcribed AI responses on screen';
 }

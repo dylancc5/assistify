@@ -254,6 +254,14 @@
   "allConversationsCleared": "All conversations cleared",
   "@allConversationsCleared": {
     "description": "All conversations cleared confirmation message"
+  },
+  "showResponseText": "Show Response Text",
+  "@showResponseText": {
+    "description": "Show response text preference title"
+  },
+  "displayTranscribedAIResponsesOnScreen": "Display transcribed AI responses on screen",
+  "@displayTranscribedAIResponsesOnScreen": {
+    "description": "Show response text preference description"
   }
 }
 

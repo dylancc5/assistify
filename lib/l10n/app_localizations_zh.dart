@@ -217,4 +217,10 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get allConversationsCleared => '所有对话已清除';
+
+  @override
+  String get showResponseText => '显示回复文本';
+
+  @override
+  String get displayTranscribedAIResponsesOnScreen => '在屏幕上显示AI回复文本';
 }

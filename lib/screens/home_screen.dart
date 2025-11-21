@@ -218,8 +218,9 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Consumer<AppStateProvider>(
         builder: (context, appState, child) {
-          final hasResponse = appState.isGeminiLoading ||
-              appState.displayedGeminiResponse != null;
+          final showText = appState.preferences.showTranscribedText;
+          final hasResponse = showText && (appState.isGeminiLoading ||
+              appState.displayedGeminiResponse != null);
 
           return LayoutBuilder(
             builder: (context, constraints) {
@@ -240,7 +241,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       child: VoiceAgentCircle(
                         size: circleSize,
                         audioLevel: appState.audioLevel,
-                        isActive: appState.isChatActive,
+                        voiceAgentState: appState.voiceAgentState,
                         colors: colors,
                       ),
                     ),
@@ -255,7 +256,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: Column(
                       children: [
                         // Gemini response display with smooth animated size transition
-                        if (appState.isGeminiLoading)
+                        if (showText && appState.isGeminiLoading)
                           Padding(
                             padding: const EdgeInsets.symmetric(
                               horizontal: AppDimensions.lg,
@@ -268,7 +269,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               textAlign: TextAlign.center,
                             ),
                           )
-                        else if (appState.displayedGeminiResponse != null)
+                        else if (showText && appState.displayedGeminiResponse != null)
                           Expanded(
                             child: Builder(
                               builder: (context) {

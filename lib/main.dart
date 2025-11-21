@@ -1,4 +1,3 @@
-// TODO: Delete ugly text subtitles (make it a setting)
 // TODO: Find way to screen record even outside of app
 // TODO: Implement screenshot input into LLM API
 // TODO: Prompt engineer better base prompt using README doc

@@ -499,6 +499,18 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'All conversations cleared'**
   String get allConversationsCleared;
+
+  /// Show response text preference title
+  ///
+  /// In en, this message translates to:
+  /// **'Show Response Text'**
+  String get showResponseText;
+
+  /// Show response text preference description
+  ///
+  /// In en, this message translates to:
+  /// **'Display transcribed AI responses on screen'**
+  String get displayTranscribedAIResponsesOnScreen;
 }
 
 class _AppLocalizationsDelegate

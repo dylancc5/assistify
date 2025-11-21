@@ -276,6 +276,22 @@ class SettingsScreen extends StatelessWidget {
                   },
                   colors: colors,
                 ),
+
+                Divider(color: colors.divider, height: 1),
+
+                // Show Transcribed Text Toggle
+                _buildPreferenceItem(
+                  icon: Icons.subtitles,
+                  title: l10n.showResponseText,
+                  subtitle: l10n.displayTranscribedAIResponsesOnScreen,
+                  value: prefs.showTranscribedText,
+                  onChanged: (value) {
+                    appState.updatePreferences(
+                      prefs.copyWith(showTranscribedText: value),
+                    );
+                  },
+                  colors: colors,
+                ),
               ],
             );
           },

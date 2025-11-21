@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import '../constants/colors.dart';
 import '../constants/dimensions.dart';
+import '../providers/app_state_provider.dart';
 
 /// Voice agent circle widget with breathing animation and audio-reactive effects
 class VoiceAgentCircle extends StatefulWidget {
   final double size;
   final double audioLevel;
-  final bool isActive;
+  final VoiceAgentState voiceAgentState;
   final AppColorScheme? colors;
 
   const VoiceAgentCircle({
     super.key,
     this.size = AppDimensions.voiceAgentCircleSize,
     this.audioLevel = 0.0,
-    this.isActive = false,
+    this.voiceAgentState = VoiceAgentState.resting,
     this.colors,
   });
 
@@ -29,6 +30,11 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
   late Animation<double> _colorTransition;
   late Animation<double> _rotationAnimation;
   late Animation<double> _scaleAnimation;
+
+  // For smooth state color transitions
+  late AnimationController _stateColorController;
+  late Animation<double> _stateColorTransition;
+  VoiceAgentState _previousState = VoiceAgentState.resting;
 
   // For smooth audio level transitions
   double _smoothedAudioLevel = 0.0;
@@ -84,8 +90,21 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
       ),
     ]).animate(_activationController);
 
+    // Setup state color transition animation
+    _stateColorController = AnimationController(
+      duration: const Duration(milliseconds: 300),
+      vsync: this,
+    );
+
+    _stateColorTransition = CurvedAnimation(
+      parent: _stateColorController,
+      curve: Curves.easeInOut,
+    );
+
+    _previousState = widget.voiceAgentState;
+
     // Set initial state
-    if (widget.isActive) {
+    if (widget.voiceAgentState != VoiceAgentState.resting) {
       _activationController.value = 1.0;
     }
   }
@@ -97,12 +116,22 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
     _smoothedAudioLevel = _smoothedAudioLevel * 0.7 + widget.audioLevel * 0.3;
 
     // Handle activation state change
-    if (widget.isActive != oldWidget.isActive) {
-      if (widget.isActive) {
+    final wasActive = oldWidget.voiceAgentState != VoiceAgentState.resting;
+    final isActive = widget.voiceAgentState != VoiceAgentState.resting;
+    if (isActive != wasActive) {
+      if (isActive) {
         _activationController.forward(from: 0.0);
       } else {
         _activationController.reverse(from: 1.0);
       }
+    }
+
+    // Handle state color transition (between listening/thinking/speaking)
+    if (widget.voiceAgentState != oldWidget.voiceAgentState &&
+        widget.voiceAgentState != VoiceAgentState.resting &&
+        oldWidget.voiceAgentState != VoiceAgentState.resting) {
+      _previousState = oldWidget.voiceAgentState;
+      _stateColorController.forward(from: 0.0);
     }
   }
 
@@ -110,35 +139,123 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
   void dispose() {
     _breathingController.dispose();
     _activationController.dispose();
+    _stateColorController.dispose();
     super.dispose();
+  }
+
+  /// Get state-specific colors based on voice agent state
+  ({
+    Color gradientStart,
+    Color gradientEnd,
+    Color border,
+    Color icon,
+    Color primary,
+  })
+  _getStateColors(AppColorScheme colors) {
+    return _getColorsForState(colors, widget.voiceAgentState);
+  }
+
+  /// Get colors for a specific state
+  ({
+    Color gradientStart,
+    Color gradientEnd,
+    Color border,
+    Color icon,
+    Color primary,
+  })
+  _getColorsForState(AppColorScheme colors, VoiceAgentState state) {
+    switch (state) {
+      case VoiceAgentState.resting:
+      case VoiceAgentState.listening:
+        return (
+          gradientStart: colors.voiceAgentGradientStart,
+          gradientEnd: colors.voiceAgentGradientEnd,
+          border: colors.voiceAgentBorder,
+          icon: colors.voiceAgentIcon,
+          primary: colors.primaryBlue,
+        );
+      case VoiceAgentState.thinking:
+        return (
+          gradientStart: colors.voiceAgentThinkingGradientStart,
+          gradientEnd: colors.voiceAgentThinkingGradientEnd,
+          border: colors.voiceAgentThinkingBorder,
+          icon: colors.voiceAgentThinkingIcon,
+          primary: colors.primaryRed,
+        );
+      case VoiceAgentState.speaking:
+        return (
+          gradientStart: colors.voiceAgentSpeakingGradientStart,
+          gradientEnd: colors.voiceAgentSpeakingGradientEnd,
+          border: colors.voiceAgentSpeakingBorder,
+          icon: colors.voiceAgentSpeakingIcon,
+          primary: colors.successGreen,
+        );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    // Calculate audio-reactive scale (adds to breathing animation)
-    final audioScale = 1.0 + (_smoothedAudioLevel * 0.15);
+    // Calculate audio-reactive scale - pulse during any active state
+    final isActive = widget.voiceAgentState != VoiceAgentState.resting;
+    final audioScale = isActive ? 1.0 + (_smoothedAudioLevel * 0.15) : 1.0;
     final colors = widget.colors ?? const AppColorScheme();
+    final currentStateColors = _getStateColors(colors);
+    final previousStateColors = _getColorsForState(colors, _previousState);
 
     return AnimatedBuilder(
-      animation: Listenable.merge([_breathingAnimation, _activationController]),
+      animation: Listenable.merge([
+        _breathingAnimation,
+        _activationController,
+        _stateColorController,
+      ]),
       builder: (context, child) {
         final totalScale =
             _breathingAnimation.value * audioScale * _scaleAnimation.value;
         final activationValue = _colorTransition.value;
+        final stateTransitionValue = _stateColorTransition.value;
+
+        // Interpolate between previous and current state colors
+        final stateColors = (
+          gradientStart: Color.lerp(
+            previousStateColors.gradientStart,
+            currentStateColors.gradientStart,
+            stateTransitionValue,
+          )!,
+          gradientEnd: Color.lerp(
+            previousStateColors.gradientEnd,
+            currentStateColors.gradientEnd,
+            stateTransitionValue,
+          )!,
+          border: Color.lerp(
+            previousStateColors.border,
+            currentStateColors.border,
+            stateTransitionValue,
+          )!,
+          icon: Color.lerp(
+            previousStateColors.icon,
+            currentStateColors.icon,
+            stateTransitionValue,
+          )!,
+          primary: Color.lerp(
+            previousStateColors.primary,
+            currentStateColors.primary,
+            stateTransitionValue,
+          )!,
+        );
 
         // Interpolate colors based on activation
         final gradientStart = Color.lerp(
           colors.voiceAgentGradientStartInactive,
-          colors.voiceAgentGradientStart,
+          stateColors.gradientStart,
           activationValue,
         )!;
 
         final gradientEnd = Color.lerp(
           colors.voiceAgentGradientEndInactive,
           Color.lerp(
-            colors.voiceAgentGradientEnd,
-            colors.primaryBlue,
-            _smoothedAudioLevel * 0.5,
+            stateColors.gradientEnd,
+            stateColors.primary,
+            isActive ? _smoothedAudioLevel * 0.5 : 0,
           )!,
           activationValue,
         )!;
@@ -146,22 +263,24 @@ class _VoiceAgentCircleState extends State<VoiceAgentCircle>
         final borderColor = Color.lerp(
           colors.voiceAgentBorderInactive,
           Color.lerp(
-            colors.voiceAgentBorder,
-            colors.primaryBlue,
-            _smoothedAudioLevel,
+            stateColors.border,
+            stateColors.primary,
+            isActive ? _smoothedAudioLevel : 0,
           )!,
           activationValue,
         )!;
 
         final shadowColor = Color.lerp(
           colors.buttonGray.withValues(alpha: 0.1),
-          colors.primaryBlue.withValues(alpha: 0.1 + _smoothedAudioLevel * 0.3),
+          stateColors.primary.withValues(
+            alpha: 0.1 + (isActive ? _smoothedAudioLevel * 0.3 : 0),
+          ),
           activationValue,
         )!;
 
         final iconColor = Color.lerp(
           colors.voiceAgentIconInactive,
-          colors.voiceAgentIcon,
+          stateColors.icon,
           activationValue,
         )!;
 

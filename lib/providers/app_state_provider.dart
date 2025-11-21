@@ -38,7 +38,7 @@ class AppStateProvider extends ChangeNotifier {
   bool _isMicrophoneMuted = false; // Start unmuted by default
   bool _isChatActive = false;
   double _audioLevel = 0.0;
-  final VoiceAgentState _voiceAgentState = VoiceAgentState.resting;
+  VoiceAgentState _voiceAgentState = VoiceAgentState.resting;
 
   // User preferences
   UserPreferences _preferences = const UserPreferences();
@@ -339,6 +339,7 @@ class AppStateProvider extends ChangeNotifier {
       _isChatActive = true;
       _chatStartTime = DateTime.now();
       _isMicrophoneMuted = false;
+      _voiceAgentState = VoiceAgentState.listening;
 
       // Initialize message tracking
       _currentMessages = [];
@@ -436,6 +437,7 @@ class AppStateProvider extends ChangeNotifier {
     if (!_geminiService.isInitialized) return;
 
     _isGeminiLoading = true;
+    _voiceAgentState = VoiceAgentState.thinking;
     _typewriterTimer?.cancel();
     _displayedResponseLength = 0;
     notifyListeners();
@@ -463,18 +465,23 @@ class AppStateProvider extends ChangeNotifier {
           await _speechService.stopListening();
           _audioLevelSubscription?.cancel();
           _audioLevel = 0.0;
-          notifyListeners();
         }
 
-        // Speak the response using TTS
+        // Set speaking state
+        _voiceAgentState = VoiceAgentState.speaking;
+        notifyListeners();
+
         await _ttsService.speak(
           text: response,
           languageCode: _preferences.languageCode,
           slowerSpeech: _preferences.slowerSpeechEnabled,
         );
 
+        _audioLevel = 0.0;
+
         // Restart speech recognition after TTS finishes
         if (_isChatActive && !_isMicrophoneMuted) {
+          _voiceAgentState = VoiceAgentState.listening;
           final started = await _speechService.startListening(
             languageCode: _preferences.languageCode,
           );
@@ -571,6 +578,7 @@ class AppStateProvider extends ChangeNotifier {
     _geminiService.resetChat();
 
     _isChatActive = false;
+    _voiceAgentState = VoiceAgentState.resting;
     _chatStartTime = null;
     notifyListeners();
   }
