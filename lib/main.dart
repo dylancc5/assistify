@@ -1,11 +1,11 @@
+// FIXME: Make sure microphone turns back on, even in the background
+
 // TODO: Find way to screen record even outside of app
 // TODO: Implement screenshot input into LLM API
-// TODO: Prompt engineer better base prompt using README doc
-// TODO: Prompt engineer output formatting for better TTS quality
+
 // TODO: Turn conversation history into RAG
 
 // FIXME: Check other promised features to implement
-// FIXME: Make sure microphone turns back on, even in the background
 // FIXME: Replace Gemini with Baidu ERNIE
 
 // TODO: Open privacy policy

@@ -59,12 +59,10 @@ class SpeechService {
   Future<bool> startListening({String? languageCode}) async {
     try {
       final langCode = languageCode ?? 'en-US';
-      debugPrint('SpeechService: Starting listening with language code: $langCode');
       final result = await _methodChannel.invokeMethod<bool>(
         'startListening',
         {'languageCode': langCode},
       );
-      debugPrint('SpeechService: Start listening result: $result');
       return result ?? false;
     } catch (e) {
       debugPrint('Error starting speech recognition: $e');

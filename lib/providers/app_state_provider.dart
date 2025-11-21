@@ -19,7 +19,7 @@ import '../widgets/permission_modal.dart';
 enum VoiceAgentState { resting, listening, thinking, speaking }
 
 /// Main app state provider
-class AppStateProvider extends ChangeNotifier {
+class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   final PermissionService _permissionService;
   final RecordingService _recordingService;
   final StorageService _storageService;
@@ -70,6 +70,9 @@ class AppStateProvider extends ChangeNotifier {
   bool _shouldPromptForEnhancedVoice = false;
   String _missingVoiceName = '';
 
+  // Audio level tracking for stats
+  List<double> _audioLevelSamples = [];
+
   // Getters for enhanced voice prompt
   bool get shouldPromptForEnhancedVoice => _shouldPromptForEnhancedVoice;
   String get missingVoiceName => _missingVoiceName;
@@ -115,6 +118,9 @@ class AppStateProvider extends ChangeNotifier {
 
   /// Initialize app state from storage
   Future<void> initialize() async {
+    // Register lifecycle observer for background handling
+    WidgetsBinding.instance.addObserver(this);
+
     _hasCompletedOnboarding = await _storageService.hasCompletedOnboarding();
     _preferences = await _storageService.loadPreferences();
     _conversations = await _storageService.loadConversations();
@@ -137,7 +143,8 @@ class AppStateProvider extends ChangeNotifier {
     await _geminiService.initialize();
 
     // Show voice recommendation on first launch
-    final hasSeenVoicePrompt = await _storageService.hasSeenVoiceRecommendation();
+    final hasSeenVoicePrompt = await _storageService
+        .hasSeenVoiceRecommendation();
     if (!hasSeenVoicePrompt) {
       _shouldPromptForEnhancedVoice = true;
       _missingVoiceName = _preferences.languageCode == 'zh-Hans'
@@ -347,14 +354,18 @@ class AppStateProvider extends ChangeNotifier {
 
       // Listen to audio level stream
       _audioLevelSubscription?.cancel();
+      _audioLevelSamples = [];
       _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
         _audioLevel = level;
+        _audioLevelSamples.add(level);
         notifyListeners();
       });
 
       // Listen to speech events (segment complete on silence)
       _speechEventSubscription?.cancel();
-      _speechEventSubscription = _speechService.speechEventStream.listen((event) {
+      _speechEventSubscription = _speechService.speechEventStream.listen((
+        event,
+      ) {
         _handleSpeechEvent(event);
       });
     }
@@ -410,6 +421,28 @@ class AppStateProvider extends ChangeNotifier {
           }
         });
       }
+    } else if (eventType == 'interruptionEnded') {
+      // Audio interruption ended (e.g., phone call ended), restart listening
+      if (_isChatActive && !_isMicrophoneMuted) {
+        Future.delayed(const Duration(milliseconds: 300), () async {
+          if (_isChatActive && !_isMicrophoneMuted) {
+            final started = await _speechService.startListening(
+              languageCode: _preferences.languageCode,
+            );
+            if (started) {
+              _voiceAgentState = VoiceAgentState.listening;
+              _audioLevelSubscription?.cancel();
+              _audioLevelSubscription = _speechService.audioLevelStream.listen((
+                level,
+              ) {
+                _audioLevel = level;
+                notifyListeners();
+              });
+              notifyListeners();
+            }
+          }
+        });
+      }
     }
   }
 
@@ -421,8 +454,11 @@ class AppStateProvider extends ChangeNotifier {
     if (_geminiResponse == null || _geminiResponse!.isEmpty) return;
 
     // Animate at ~40 characters per second
-    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 25), (timer) {
-      if (_geminiResponse == null || _displayedResponseLength >= _geminiResponse!.length) {
+    _typewriterTimer = Timer.periodic(const Duration(milliseconds: 25), (
+      timer,
+    ) {
+      if (_geminiResponse == null ||
+          _displayedResponseLength >= _geminiResponse!.length) {
         timer.cancel();
         return;
       }
@@ -431,10 +467,35 @@ class AppStateProvider extends ChangeNotifier {
     });
   }
 
+  /// Print audio level stats for the current segment
+  void _printAudioStats() {
+    if (_audioLevelSamples.isEmpty) return;
+
+    final samples = List<double>.from(_audioLevelSamples);
+    samples.sort();
+
+    final min = samples.first;
+    final max = samples.last;
+    final avg = samples.reduce((a, b) => a + b) / samples.length;
+    final median = samples.length.isOdd
+        ? samples[samples.length ~/ 2]
+        : (samples[samples.length ~/ 2 - 1] + samples[samples.length ~/ 2]) / 2;
+
+    debugPrint(
+      'Audio stats - min: ${min.toStringAsFixed(3)}, avg: ${avg.toStringAsFixed(3)}, median: ${median.toStringAsFixed(3)}, max: ${max.toStringAsFixed(3)} (${samples.length} samples)',
+    );
+
+    // Clear samples for next segment
+    _audioLevelSamples = [];
+  }
+
   /// Send message to Gemini and update response
   /// This runs asynchronously without blocking the speech recognition
   void _sendToGemini(String message) {
     if (!_geminiService.isInitialized) return;
+
+    // Print audio stats for this segment
+    _printAudioStats();
 
     _isGeminiLoading = true;
     _voiceAgentState = VoiceAgentState.thinking;
@@ -443,63 +504,67 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
 
     // Run async without awaiting - allows speech recognition to continue
-    _geminiService.sendMessage(message).then((response) async {
-      _geminiResponse = response;
-      _isGeminiLoading = false;
+    _geminiService
+        .sendMessage(message)
+        .then((response) async {
+          _geminiResponse = response;
+          _isGeminiLoading = false;
 
-      // Start typewriter animation
-      _startTypewriterAnimation();
+          // Start typewriter animation
+          _startTypewriterAnimation();
 
-      // Add Gemini response as a message in the conversation
-      if (response != null && response.isNotEmpty) {
-        final agentMessage = Message(
-          id: '${DateTime.now().millisecondsSinceEpoch}_agent',
-          text: response,
-          timestamp: DateTime.now(),
-          sender: MessageSender.agent,
-        );
-        _currentMessages.add(agentMessage);
+          // Add Gemini response as a message in the conversation
+          if (response != null && response.isNotEmpty) {
+            final agentMessage = Message(
+              id: '${DateTime.now().millisecondsSinceEpoch}_agent',
+              text: response,
+              timestamp: DateTime.now(),
+              sender: MessageSender.agent,
+            );
+            _currentMessages.add(agentMessage);
 
-        // Stop speech recognition while TTS is speaking to avoid self-listening
-        if (_isChatActive && !_isMicrophoneMuted) {
-          await _speechService.stopListening();
-          _audioLevelSubscription?.cancel();
-          _audioLevel = 0.0;
-        }
+            // Stop speech recognition while TTS is speaking to avoid self-listening
+            if (_isChatActive && !_isMicrophoneMuted) {
+              await _speechService.stopListening();
+              _audioLevelSubscription?.cancel();
+              _audioLevel = 0.0;
+            }
 
-        // Set speaking state
-        _voiceAgentState = VoiceAgentState.speaking;
-        notifyListeners();
+            // Set speaking state
+            _voiceAgentState = VoiceAgentState.speaking;
+            notifyListeners();
 
-        await _ttsService.speak(
-          text: response,
-          languageCode: _preferences.languageCode,
-          slowerSpeech: _preferences.slowerSpeechEnabled,
-        );
+            await _ttsService.speak(
+              text: response,
+              languageCode: _preferences.languageCode,
+              slowerSpeech: _preferences.slowerSpeechEnabled,
+            );
 
-        _audioLevel = 0.0;
+            _audioLevel = 0.0;
 
-        // Restart speech recognition after TTS finishes
-        if (_isChatActive && !_isMicrophoneMuted) {
-          _voiceAgentState = VoiceAgentState.listening;
-          final started = await _speechService.startListening(
-            languageCode: _preferences.languageCode,
-          );
-          if (started) {
-            _audioLevelSubscription?.cancel();
-            _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
-              _audioLevel = level;
-              notifyListeners();
-            });
+            // Restart speech recognition after TTS finishes
+            if (_isChatActive && !_isMicrophoneMuted) {
+              _voiceAgentState = VoiceAgentState.listening;
+              final started = await _speechService.startListening(
+                languageCode: _preferences.languageCode,
+              );
+              if (started) {
+                _audioLevelSubscription?.cancel();
+                _audioLevelSubscription = _speechService.audioLevelStream
+                    .listen((level) {
+                      _audioLevel = level;
+                      notifyListeners();
+                    });
+              }
+            }
           }
-        }
-      }
 
-      notifyListeners();
-    }).catchError((error) {
-      _isGeminiLoading = false;
-      notifyListeners();
-    });
+          notifyListeners();
+        })
+        .catchError((error) {
+          _isGeminiLoading = false;
+          notifyListeners();
+        });
   }
 
   /// End chat and save conversation to history
@@ -773,8 +838,53 @@ class AppStateProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Handle app lifecycle changes for background audio
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (state == AppLifecycleState.resumed) {
+      // App returned to foreground - restart speech recognition
+      // iOS may have interrupted the audio session while backgrounded
+      if (_isChatActive && !_isMicrophoneMuted) {
+        _restartSpeechRecognition();
+      }
+    }
+
+    // Note: We intentionally do NOT stop speech recognition on pause/inactive
+    // This allows the voice agent to attempt to continue in the background
+  }
+
+  /// Restart speech recognition after coming back from background
+  Future<void> _restartSpeechRecognition() async {
+    // Stop current recognition first to get a clean state
+    await _speechService.stopListening();
+    _audioLevelSubscription?.cancel();
+    _audioLevelSubscription = null;
+
+    // Brief delay to allow audio session to reset
+    await Future.delayed(const Duration(milliseconds: 200));
+
+    // Restart listening
+    final started = await _speechService.startListening(
+      languageCode: _preferences.languageCode,
+    );
+
+    if (started) {
+      _voiceAgentState = VoiceAgentState.listening;
+      _audioLevelSubscription = _speechService.audioLevelStream.listen((level) {
+        _audioLevel = level;
+        notifyListeners();
+      });
+      notifyListeners();
+    } else {
+      debugPrint('Failed to restart speech recognition after resume');
+    }
+  }
+
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _audioLevelSubscription?.cancel();
     _speechEventSubscription?.cancel();
     _typewriterTimer?.cancel();

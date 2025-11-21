@@ -118,6 +118,14 @@ import Speech
     )
     ttsAudioLevelEventChannel?.setStreamHandler(TTSAudioLevelStreamHandler(appDelegate: self))
 
+    // Set up audio interruption handling for background operation
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(handleAudioInterruption),
+      name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+
     ttsMethodChannel?.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else { return }
 
@@ -491,16 +499,41 @@ import Speech
     // Update speech recognizer with new language
     speechRecognizer = recognizer
 
-    // Configure audio session
+    // Configure audio session with retry logic for background recovery
     do {
       let audioSession = AVAudioSession.sharedInstance()
+
+      // First try to deactivate to reset any interrupted state
+      try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+
       // Use playAndRecord to allow both TTS and speech recognition
       try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
-      result(FlutterError(code: "AUDIO_SESSION_ERROR",
-                         message: "Failed to configure audio session: \(error.localizedDescription)",
-                         details: nil))
+      // Retry once after a brief delay
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        do {
+          let audioSession = AVAudioSession.sharedInstance()
+          try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+          try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+          // Continue with recognition setup after retry
+          self?.continueRecognitionSetup(languageCode: languageCode, result: result)
+        } catch {
+          result(FlutterError(code: "AUDIO_SESSION_ERROR",
+                             message: "Failed to configure audio session: \(error.localizedDescription)",
+                             details: nil))
+        }
+      }
+      return
+    }
+
+    // Continue with recognition setup
+    continueRecognitionSetup(languageCode: languageCode, result: result)
+  }
+
+  private func continueRecognitionSetup(languageCode: String, result: @escaping FlutterResult) {
+    guard let engine = audioEngine, let recognizer = speechRecognizer else {
+      result(FlutterError(code: "SETUP_ERROR", message: "Audio engine or recognizer not available", details: nil))
       return
     }
 
@@ -745,9 +778,13 @@ import Speech
       return
     }
 
-    // Configure audio session
+    // Configure audio session with reset for interrupted state
     do {
       let audioSession = AVAudioSession.sharedInstance()
+
+      // First try to deactivate to reset any interrupted state
+      try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+
       // Use playAndRecord to allow both TTS and speech recognition
       try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
@@ -822,6 +859,51 @@ import Speech
   private func cancelSilenceTimer() {
     silenceTimer?.invalidate()
     silenceTimer = nil
+  }
+
+  // MARK: - Audio Interruption Handling
+
+  @objc private func handleAudioInterruption(notification: Notification) {
+    guard let userInfo = notification.userInfo,
+          let typeValue = userInfo[AVAudioSessionInterruptionTypeKey] as? UInt,
+          let type = AVAudioSession.InterruptionType(rawValue: typeValue) else {
+      return
+    }
+
+    switch type {
+    case .began:
+      // Audio interrupted (e.g., phone call)
+      // Stop TTS if speaking
+      speechSynthesizer?.stopSpeaking(at: .immediate)
+      // Note: Speech recognition will automatically stop
+
+    case .ended:
+      // Interruption ended - try to resume
+      guard let optionsValue = userInfo[AVAudioSessionInterruptionOptionKey] as? UInt else { return }
+      let options = AVAudioSession.InterruptionOptions(rawValue: optionsValue)
+
+      if options.contains(.shouldResume) {
+        // Reactivate audio session
+        do {
+          let audioSession = AVAudioSession.sharedInstance()
+          try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+
+          // If we were listening before, notify Flutter to restart
+          if isListening {
+            if let sink = speechEventSink {
+              DispatchQueue.main.async {
+                sink(["event": "interruptionEnded"])
+              }
+            }
+          }
+        } catch {
+          print("Failed to reactivate audio session after interruption: \(error)")
+        }
+      }
+
+    @unknown default:
+      break
+    }
   }
 
   // Public methods for stream handlers to set event sinks
