@@ -63,6 +63,14 @@ import Speech
   private var ttsAudioLevelEventChannel: FlutterEventChannel?
   private var ttsAudioLevelEventSink: FlutterEventSink?
 
+  // Background Gemini processing properties
+  private var backgroundGeminiTask: UIBackgroundTaskIdentifier = .invalid
+  private var geminiApiKey: String?
+  private var supabaseUrl: String?
+  private var supabaseAnonKey: String?
+  private var chatHistory: [[String: String]] = []
+  private var conversationIds: [String] = []
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -122,6 +130,24 @@ import Speech
         let count = self.frameBuffer.count
         self.frameBufferLock.unlock()
         result(count)
+      case "setBroadcastContext":
+        if let args = call.arguments as? [String: Any] {
+          self.geminiApiKey = args["geminiApiKey"] as? String
+          self.supabaseUrl = args["supabaseUrl"] as? String
+          self.supabaseAnonKey = args["supabaseAnonKey"] as? String
+          self.conversationIds = args["conversationIds"] as? [String] ?? []
+          if let historyData = args["chatHistory"] as? [[String: String]] {
+            self.chatHistory = historyData
+          }
+          print("📱 [BackgroundGemini] Broadcast context set - \(self.chatHistory.count) messages, \(self.conversationIds.count) conversations")
+          result(true)
+        } else {
+          result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments for setBroadcastContext", details: nil))
+        }
+      case "checkGeminiResponse":
+        self.checkGeminiResponse(result: result)
+      case "clearGeminiResponse":
+        self.clearGeminiResponse(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -529,33 +555,47 @@ import Speech
     // Show the broadcast picker
     DispatchQueue.main.async { [weak self] in
       guard let rootVC = self?.window?.rootViewController else {
+        print("❌ [ScreenCapture] No root view controller")
         result(false)
         return
       }
 
       // Create broadcast picker view
       let broadcastPicker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 60, height: 60))
+      broadcastPicker.preferredExtension = "com.dylancc5.assistify.Asstify-Screenshare"
       broadcastPicker.showsMicrophoneButton = true  // Enable mic for raw audio STT
 
       // Add to view hierarchy temporarily so it can present the picker
       broadcastPicker.alpha = 0
       rootVC.view.addSubview(broadcastPicker)
 
-      // Find and tap the button to show the picker
-      for subview in broadcastPicker.subviews {
-        if let button = subview as? UIButton {
-          button.sendActions(for: .touchUpInside)
-          break
+      // Find and tap the button recursively
+      func findButton(in view: UIView) -> UIButton? {
+        if let button = view as? UIButton {
+          return button
         }
+        for subview in view.subviews {
+          if let button = findButton(in: subview) {
+            return button
+          }
+        }
+        return nil
+      }
+
+      if let button = findButton(in: broadcastPicker) {
+        print("📺 [ScreenCapture] Found broadcast picker button, triggering...")
+        button.sendActions(for: .touchUpInside)
+      } else {
+        print("❌ [ScreenCapture] Could not find button in broadcast picker")
       }
 
       // Remove after a delay
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
         broadcastPicker.removeFromSuperview()
       }
 
-      // Return false since broadcast isn't active yet - user needs to select it
-      result(false)
+      // Return true since picker was shown successfully - user will start broadcast from picker
+      result(true)
     }
     return
 
@@ -872,8 +912,9 @@ import Speech
         self.isCapturingFrames = false
         self.useRawAudioSTT = false  // Switch back to normal STT
 
-        // Stop broadcast audio monitoring
+        // Stop broadcast audio monitoring and extension transcript monitoring
         self.stopBroadcastAudioMonitoring()
+        self.stopExtensionTranscriptMonitoring()
         self.isRecordingRawAudio = false
 
         // Clear any remaining audio chunks
@@ -906,16 +947,37 @@ import Speech
           // Reconfigure audio session to ensure audio continues working
           self.reconfigureAudioSessionForSpeech()
 
-          // If we were listening before, stop normal recognition and start raw audio recording
+          // If we were listening before, stop normal recognition and switch to extension STT or raw audio
           if self.shouldBeListening {
-            print("🎙️ [RawAudio] Switching to raw audio STT for broadcast mode...")
+            print("🎙️ [BroadcastSTT] Switching to broadcast STT mode...")
             // Stop normal speech recognition if running
             if self.isListening {
               self.stopAudioEngine()
             }
-            // Start raw audio recording after a brief delay
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-              self.startRawAudioRecording()
+            // Set language code for extension
+            if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
+              userDefaults.set(self.currentLanguageCode, forKey: "speechLanguageCode")
+              userDefaults.synchronize()
+            }
+            // Wait a moment for extension to initialize, then check if it's doing STT
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+              // Check if extension STT is active
+              if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
+                userDefaults.synchronize()
+                let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
+                if extensionSTTActive {
+                  print("🎙️ [STT Mode] Using EXTENSION STT (native Speech Recognition in broadcast extension)")
+                  print("   ✓ Reliable, uses Apple's Speech framework directly")
+                  self.startExtensionTranscriptMonitoring()
+                } else {
+                  print("🎙️ [STT Mode] Using RAW AUDIO STT (fallback file-based method)")
+                  print("   ⚠️ Less reliable - audio chunks passed to main app for transcription")
+                  self.startRawAudioRecording()
+                }
+              } else {
+                // Fallback to raw audio
+                self.startRawAudioRecording()
+              }
             }
           }
         }
@@ -981,9 +1043,27 @@ import Speech
     // Mark that user wants to be listening
     shouldBeListening = true
 
-    // If we're in broadcast mode, use raw audio STT instead
-    if useRawAudioSTT {
-      print("🎙️ [RawAudio] Starting raw audio STT (broadcast mode active)")
+    // If we're in broadcast mode, check if extension STT is active
+    if useRawAudioSTT && isBroadcastExtensionActive() {
+      // Set language code in shared UserDefaults for extension to use
+      if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+        userDefaults.set(languageCode, forKey: "speechLanguageCode")
+        userDefaults.synchronize()
+      }
+      
+      // Check if extension STT is active (extension handles STT directly)
+      if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+        let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
+        if extensionSTTActive {
+          print("🎙️ [ExtensionSTT] Extension is handling STT - monitoring for transcripts")
+          startExtensionTranscriptMonitoring()
+          result(true)
+          return
+        }
+      }
+      
+      // Fallback to file-based audio chunk processing
+      print("🎙️ [RawAudio] Starting raw audio STT (broadcast mode active, extension STT not available)")
       startRawAudioRecording()
       result(true)
       return
@@ -1170,6 +1250,9 @@ import Speech
     // Mark that user no longer wants to be listening
     shouldBeListening = false
 
+    // Stop extension transcript monitoring if active
+    stopExtensionTranscriptMonitoring()
+
     // First, finalize the current recognition task to get the final transcription
     recognitionRequest?.endAudio()
 
@@ -1195,6 +1278,9 @@ import Speech
   private func endChat(result: @escaping FlutterResult) {
     // Mark that user no longer wants to be listening
     shouldBeListening = false
+
+    // Stop extension transcript monitoring if active
+    stopExtensionTranscriptMonitoring()
 
     // First, finalize the current recognition task to get the final transcription
     recognitionRequest?.endAudio()
@@ -1449,23 +1535,47 @@ import Speech
     print("📱 [AppLifecycle] App became active (foreground)")
     isAppInForeground = true
 
+    // Stop background Gemini polling if it was running
+    stopBackgroundGeminiPolling()
+    endBackgroundGeminiTask()
+
+    // Clear any stale pending Gemini request flags to prevent old requests from triggering
+    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+      userDefaults.set(false, forKey: "geminiRequestPending")
+      userDefaults.synchronize()
+      print("🤖 [BackgroundGemini] Cleared pending request flag on foreground")
+    }
+
     // If we were recording raw audio with AVAudioRecorder, stop and transcribe it
     if isRecordingRawAudio && audioRecorder != nil {
       stopRawAudioAndTranscribe()
     }
 
-    // If in broadcast mode, check for any accumulated audio chunks to process
+    // If in broadcast mode, check for extension STT or accumulated audio chunks
     if useRawAudioSTT && isBroadcastExtensionActive() {
-      print("🎙️ [BroadcastAudio] App returned to foreground - checking for accumulated audio")
+      print("🎙️ [BroadcastSTT] App returned to foreground - checking STT status")
 
-      // Restart the monitoring timer if it was stopped
-      if broadcastAudioMonitorTimer == nil {
-        startBroadcastAudioMonitoring()
-      }
-
-      // Process any chunks that accumulated while in background
-      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
-        self?.processAccumulatedBroadcastAudio()
+      // Check if extension STT is active
+      if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+        userDefaults.synchronize()
+        let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
+        
+        if extensionSTTActive {
+          // Extension is handling STT - restart transcript monitoring
+          if extensionTranscriptMonitorTimer == nil {
+            startExtensionTranscriptMonitoring()
+          }
+        } else {
+          // Fallback to file-based audio chunks
+          if broadcastAudioMonitorTimer == nil {
+            startBroadcastAudioMonitoring()
+          }
+          
+          // Process any chunks that accumulated while in background
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.processAccumulatedBroadcastAudio()
+          }
+        }
       }
     }
   }
@@ -1493,6 +1603,429 @@ import Speech
   @objc private func appWillResignActive() {
     print("📱 [AppLifecycle] App will resign active (background)")
     isAppInForeground = false
+
+    // Start background task to poll for Gemini requests from broadcast extension
+    if isBroadcastExtensionActive() {
+      print("🤖 [BackgroundGemini] Broadcast active - starting background polling for Gemini request...")
+      startBackgroundGeminiPolling()
+    } else {
+      print("📱 [AppLifecycle] No broadcast active - skipping background Gemini polling")
+    }
+  }
+
+  private var geminiPollingTimer: Timer?
+
+  private func startBackgroundGeminiPolling() {
+    // Clear any stale pending flags before starting to poll
+    // This ensures we only respond to NEW requests from this background session
+    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+      userDefaults.set(false, forKey: "geminiRequestPending")
+      userDefaults.set(false, forKey: "hasNewTranscript")
+      userDefaults.removeObject(forKey: "extensionTranscript")
+      userDefaults.removeObject(forKey: "geminiFramePaths")
+      userDefaults.synchronize()
+      print("🤖 [BackgroundGemini] Cleared all stale flags and data before polling")
+    }
+
+    // Start background task
+    backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
+      print("🤖 [BackgroundGemini] Background task expiring - stopping polling")
+      self?.stopBackgroundGeminiPolling()
+      self?.endBackgroundGeminiTask()
+    }
+
+    print("🤖 [BackgroundGemini] Background task started - polling for pending request (every 500ms)")
+
+    // Poll every 500ms for a pending request
+    geminiPollingTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+      guard let self = self else { return }
+
+      guard let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) else { return }
+      userDefaults.synchronize()
+
+      let isPending = userDefaults.bool(forKey: "geminiRequestPending")
+      if isPending {
+        print("🤖 [BackgroundGemini] ✓ Detected pending request from extension - processing...")
+        self.stopBackgroundGeminiPolling()
+        self.checkAndProcessGeminiRequest()
+      }
+    }
+  }
+
+  private func stopBackgroundGeminiPolling() {
+    geminiPollingTimer?.invalidate()
+    geminiPollingTimer = nil
+  }
+
+  // MARK: - Background Gemini Processing
+
+  private func checkAndProcessGeminiRequest() {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      print("⚠️ [BackgroundGemini] Failed to access UserDefaults")
+      return
+    }
+    userDefaults.synchronize()
+
+    let isPending = userDefaults.bool(forKey: "geminiRequestPending")
+    guard isPending else {
+      print("🤖 [BackgroundGemini] No pending request found")
+      return
+    }
+
+    print("🤖 [BackgroundGemini] ✓ Found pending Gemini request - starting background task")
+
+    // Get request data
+    guard let transcript = userDefaults.string(forKey: "extensionTranscript"),
+          let framePathsString = userDefaults.string(forKey: "geminiFramePaths"),
+          let framePathsData = framePathsString.data(using: .utf8),
+          let framePaths = try? JSONSerialization.jsonObject(with: framePathsData) as? [String] else {
+      print("⚠️ [BackgroundGemini] Failed to read request data from UserDefaults")
+      return
+    }
+
+    // Validate transcript is not empty or just whitespace
+    let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+    guard !trimmedTranscript.isEmpty else {
+      print("⚠️ [BackgroundGemini] Empty transcript - ignoring request")
+      userDefaults.set(false, forKey: "geminiRequestPending")
+      userDefaults.synchronize()
+      return
+    }
+
+    print("🤖 [BackgroundGemini] Transcript: \"\(trimmedTranscript.prefix(50))...\" with \(framePaths.count) frames")
+
+    // Clear pending flag
+    userDefaults.set(false, forKey: "geminiRequestPending")
+    userDefaults.synchronize()
+
+    // Start background task
+    backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
+      print("🤖 [BackgroundGemini] Background task expiring")
+      self?.endBackgroundGeminiTask()
+    }
+
+    // Process the request
+    processGeminiRequest(transcript: trimmedTranscript, framePaths: framePaths) { [weak self] success in
+      print("🤖 [BackgroundGemini] Request completed - success: \(success)")
+      self?.endBackgroundGeminiTask()
+    }
+  }
+
+  private func endBackgroundGeminiTask() {
+    if backgroundGeminiTask != .invalid {
+      UIApplication.shared.endBackgroundTask(backgroundGeminiTask)
+      backgroundGeminiTask = .invalid
+    }
+  }
+
+  private func processGeminiRequest(transcript: String, framePaths: [String], completion: @escaping (Bool) -> Void) {
+    guard let apiKey = geminiApiKey else {
+      print("⚠️ [BackgroundGemini] No API key available - did you call setBroadcastContext?")
+      completion(false)
+      return
+    }
+
+    print("🤖 [BackgroundGemini] Step 1/4: Retrieving RAG context...")
+
+    // First retrieve RAG context
+    retrieveRAGContext(query: transcript) { [weak self] ragContext in
+      guard let self = self else {
+        print("⚠️ [BackgroundGemini] Self deallocated during RAG retrieval")
+        completion(false)
+        return
+      }
+
+      print("🤖 [BackgroundGemini] Step 2/4: Loading \(framePaths.suffix(10).count) frame images...")
+      print("🤖 [BackgroundGemini] Total frame paths received: \(framePaths.count)")
+
+      // Load frame images
+      var imageDataArray: [Data] = []
+      var loadedCount = 0
+      var failedCount = 0
+      for path in framePaths.suffix(10) { // Max 10 frames
+        if let data = FileManager.default.contents(atPath: path) {
+          imageDataArray.append(data)
+          loadedCount += 1
+        } else {
+          print("⚠️ [BackgroundGemini] Failed to load frame at: \(path)")
+          failedCount += 1
+        }
+      }
+
+      if failedCount > 0 {
+        print("⚠️ [BackgroundGemini] Failed to load \(failedCount)/\(framePaths.suffix(10).count) frames")
+      }
+      print("🤖 [BackgroundGemini] Loaded \(loadedCount) frames successfully (total bytes: \(imageDataArray.reduce(0) { $0 + $1.count }))")
+
+      // Build augmented message with RAG context
+      var augmentedMessage = transcript
+      if !ragContext.isEmpty {
+        let contextText = ragContext.joined(separator: "\n---\n")
+        augmentedMessage = """
+        Here is some relevant context from our past conversations:
+        \(contextText)
+
+        Current question/message: \(transcript)
+        """
+        print("🤖 [BackgroundGemini] Augmented message with \(ragContext.count) RAG context items")
+      } else {
+        print("🤖 [BackgroundGemini] No RAG context available - using raw transcript")
+      }
+
+      print("🤖 [BackgroundGemini] Step 3/4: Calling Gemini API with \(self.chatHistory.count) history messages...")
+
+      // Make Gemini API call
+      self.callGeminiAPI(message: augmentedMessage, images: imageDataArray, apiKey: apiKey) { response in
+        if let response = response {
+          print("🤖 [BackgroundGemini] ✓ Gemini API call successful - response length: \(response.count)")
+
+          // Save response for Flutter to pick up
+          if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
+            userDefaults.set(response, forKey: "geminiResponse")
+            userDefaults.set(transcript, forKey: "geminiOriginalTranscript")
+            userDefaults.set(true, forKey: "geminiResponseReady")
+            userDefaults.set(Date().timeIntervalSince1970, forKey: "geminiResponseTime")
+            userDefaults.synchronize()
+            print("🤖 [BackgroundGemini] Saved response to UserDefaults for Flutter sync")
+          }
+
+          print("🤖 [BackgroundGemini] Step 4/4: Speaking response in background...")
+
+          // Speak the response immediately (TTS works in background)
+          self.speakInBackground(text: response)
+
+          completion(true)
+        } else {
+          print("⚠️ [BackgroundGemini] Gemini API call failed")
+          completion(false)
+        }
+      }
+    }
+  }
+
+  private func retrieveRAGContext(query: String, completion: @escaping ([String]) -> Void) {
+    guard let supabaseUrl = supabaseUrl,
+          let supabaseKey = supabaseAnonKey,
+          let apiKey = geminiApiKey,
+          !conversationIds.isEmpty else {
+      if conversationIds.isEmpty {
+        print("🤖 [BackgroundGemini] RAG skipped - no conversation IDs available")
+      } else {
+        print("⚠️ [BackgroundGemini] RAG skipped - missing Supabase credentials")
+      }
+      completion([])
+      return
+    }
+
+    print("🤖 [BackgroundGemini] Generating embedding for RAG query...")
+
+    // First generate embedding for the query
+    generateEmbedding(text: query, apiKey: apiKey) { [weak self] embedding in
+      guard let self = self, let embedding = embedding else {
+        print("⚠️ [BackgroundGemini] Failed to generate embedding")
+        completion([])
+        return
+      }
+
+      print("🤖 [BackgroundGemini] Querying Supabase for similar messages in \(self.conversationIds.count) conversations...")
+
+      // Query Supabase for similar messages
+      let url = URL(string: "\(supabaseUrl)/rest/v1/rpc/match_message_embeddings")!
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+      request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
+      request.setValue("Bearer \(supabaseKey)", forHTTPHeaderField: "Authorization")
+
+      let body: [String: Any] = [
+        "query_embedding": embedding,
+        "match_count": 5,
+        "filter_conversation_ids": self.conversationIds
+      ]
+
+      request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+      URLSession.shared.dataTask(with: request) { data, response, error in
+        guard let data = data,
+              let results = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else {
+          print("🤖 [BackgroundGemini] RAG query failed: \(error?.localizedDescription ?? "unknown")")
+          completion([])
+          return
+        }
+
+        let contextStrings = results.compactMap { $0["chunk_text"] as? String }
+        print("🤖 [BackgroundGemini] Retrieved \(contextStrings.count) RAG context items")
+        completion(contextStrings)
+      }.resume()
+    }
+  }
+
+  private func generateEmbedding(text: String, apiKey: String, completion: @escaping ([Double]?) -> Void) {
+    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/text-embedding-004:embedContent?key=\(apiKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    let body: [String: Any] = [
+      "model": "models/text-embedding-004",
+      "content": ["parts": [["text": text]]]
+    ]
+
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      guard let data = data,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let embedding = json["embedding"] as? [String: Any],
+            let values = embedding["values"] as? [Double] else {
+        print("🤖 [BackgroundGemini] Embedding generation failed: \(error?.localizedDescription ?? "unknown")")
+        completion(nil)
+        return
+      }
+
+      completion(values)
+    }.resume()
+  }
+
+  private func callGeminiAPI(message: String, images: [Data], apiKey: String, completion: @escaping (String?) -> Void) {
+    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)")!
+    var request = URLRequest(url: url)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+    // Build parts array
+    var parts: [[String: Any]] = []
+
+    // Add images
+    for imageData in images {
+      let base64 = imageData.base64EncodedString()
+      parts.append([
+        "inline_data": [
+          "mime_type": "image/jpeg",
+          "data": base64
+        ]
+      ])
+    }
+
+    // Add text
+    var textContent = message
+    if !images.isEmpty {
+      textContent = "These are screenshots from the screen in chronological order. Use them as visual context to understand what the user is looking at.\n\n\(message)"
+    }
+    parts.append(["text": textContent])
+
+    // Build request body with chat history
+    var contents: [[String: Any]] = []
+
+    // Add chat history
+    for historyItem in chatHistory {
+      if let role = historyItem["role"], let content = historyItem["content"] {
+        contents.append([
+          "role": role == "user" ? "user" : "model",
+          "parts": [["text": content]]
+        ])
+      }
+    }
+
+    // Add current message
+    contents.append([
+      "role": "user",
+      "parts": parts
+    ])
+
+    let systemInstruction = """
+    You are Assistify, a helpful and friendly voice assistant designed to answer questions quickly and concisely.
+
+    Key guidelines:
+    - Keep responses brief and conversational (1-3 sentences when possible)
+    - Speak naturally as if having a conversation
+    - Be direct and get to the point quickly
+    - When given screenshots, analyze them to help answer questions about what the user is viewing
+    - If you need clarification, ask one simple question
+    - Use a warm, friendly tone
+    """
+
+    let body: [String: Any] = [
+      "contents": contents,
+      "systemInstruction": ["parts": [["text": systemInstruction]]],
+      "generationConfig": [
+        "temperature": 0.4,
+        "maxOutputTokens": 1024
+      ]
+    ]
+
+    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+    URLSession.shared.dataTask(with: request) { data, response, error in
+      guard let data = data,
+            let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+            let candidates = json["candidates"] as? [[String: Any]],
+            let firstCandidate = candidates.first,
+            let content = firstCandidate["content"] as? [String: Any],
+            let responseParts = content["parts"] as? [[String: Any]],
+            let text = responseParts.first?["text"] as? String else {
+        print("🤖 [BackgroundGemini] API call failed: \(error?.localizedDescription ?? "unknown")")
+        if let data = data, let responseStr = String(data: data, encoding: .utf8) {
+          print("🤖 [BackgroundGemini] Response: \(responseStr)")
+        }
+        completion(nil)
+        return
+      }
+
+      print("🤖 [BackgroundGemini] Got response: \(text.prefix(100))...")
+      completion(text)
+    }.resume()
+  }
+
+  private func speakInBackground(text: String) {
+    guard let synthesizer = speechSynthesizer else {
+      print("🔊 [BackgroundTTS] No speech synthesizer available")
+      return
+    }
+
+    let utterance = AVSpeechUtterance(string: text)
+    utterance.voice = AVSpeechSynthesisVoice(language: currentLanguageCode)
+    utterance.rate = AVSpeechUtteranceDefaultSpeechRate * 0.9
+    utterance.pitchMultiplier = 1.0
+    utterance.volume = 1.0
+
+    synthesizer.speak(utterance)
+    print("🔊 [BackgroundTTS] Speaking response in background")
+  }
+
+  private func checkGeminiResponse(result: @escaping FlutterResult) {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      result(nil)
+      return
+    }
+    userDefaults.synchronize()
+
+    let isReady = userDefaults.bool(forKey: "geminiResponseReady")
+    if isReady {
+      let response: [String: Any?] = [
+        "response": userDefaults.string(forKey: "geminiResponse"),
+        "transcript": userDefaults.string(forKey: "geminiOriginalTranscript"),
+        "timestamp": userDefaults.double(forKey: "geminiResponseTime")
+      ]
+      result(response)
+    } else {
+      result(nil)
+    }
+  }
+
+  private func clearGeminiResponse(result: @escaping FlutterResult) {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      result(false)
+      return
+    }
+
+    userDefaults.removeObject(forKey: "geminiResponse")
+    userDefaults.removeObject(forKey: "geminiOriginalTranscript")
+    userDefaults.removeObject(forKey: "geminiResponseReady")
+    userDefaults.removeObject(forKey: "geminiResponseTime")
+    userDefaults.synchronize()
+
+    result(true)
   }
 
   // MARK: - Raw Audio Recording Methods
@@ -1718,6 +2251,8 @@ import Speech
 
   private var broadcastAudioMonitorTimer: Timer?
   private var lastProcessedSilenceTime: TimeInterval = 0
+  private var extensionTranscriptMonitorTimer: Timer?
+  private var lastProcessedTranscriptTime: TimeInterval = 0
 
   private func startBroadcastAudioMonitoring() {
     print("🎙️ [BroadcastAudio] Starting to monitor for silence detection from extension")
@@ -1726,6 +2261,58 @@ import Speech
     broadcastAudioMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self = self else { return }
       self.checkBroadcastSilenceDetection()
+    }
+  }
+  
+  private func startExtensionTranscriptMonitoring() {
+    print("🎙️ [ExtensionSTT] Starting to monitor for extension transcripts")
+    
+    // Stop any existing audio chunk monitoring
+    stopBroadcastAudioMonitoring()
+    
+    // Check for new transcripts every 500ms
+    extensionTranscriptMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+      guard let self = self else { return }
+      self.checkExtensionTranscript()
+    }
+  }
+  
+  private func stopExtensionTranscriptMonitoring() {
+    extensionTranscriptMonitorTimer?.invalidate()
+    extensionTranscriptMonitorTimer = nil
+  }
+  
+  private func checkExtensionTranscript() {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+    userDefaults.synchronize()
+    
+    let hasNewTranscript = userDefaults.bool(forKey: "hasNewTranscript")
+    let transcriptTime = userDefaults.double(forKey: "extensionTranscriptTime")
+    
+    // Only process if this is a new transcript
+    if hasNewTranscript && transcriptTime > lastProcessedTranscriptTime {
+      lastProcessedTranscriptTime = transcriptTime
+      
+      // Get the transcript
+      guard let transcript = userDefaults.string(forKey: "extensionTranscript"), !transcript.isEmpty else {
+        // Clear flag even if transcript is empty
+        userDefaults.set(false, forKey: "hasNewTranscript")
+        userDefaults.synchronize()
+        return
+      }
+      
+      // Clear the flag
+      userDefaults.set(false, forKey: "hasNewTranscript")
+      userDefaults.synchronize()
+      
+      print("🎙️ [ExtensionSTT] Received transcript: \(transcript)")
+      
+      // Send transcription to Flutter as a segment complete event
+      if let sink = speechEventSink {
+        DispatchQueue.main.async {
+          sink(["event": "segmentComplete", "text": transcript, "source": "extensionSTT"])
+        }
+      }
     }
   }
 
@@ -2083,11 +2670,18 @@ import Speech
     // Clear audio chunks when TTS finishes so we only capture user's response
     // This ensures we don't include old audio from before the agent spoke
     if useRawAudioSTT && isBroadcastExtensionActive() {
-      print("🎙️ [BroadcastAudio] Clearing audio buffer after TTS finished")
-      clearBroadcastAudioChunks()
+      // Only clear chunks if we're using file-based approach (not extension STT)
+      if extensionTranscriptMonitorTimer == nil {
+        print("🎙️ [BroadcastAudio] Clearing audio buffer after TTS finished")
+        clearBroadcastAudioChunks()
 
-      // Also reset the silence time tracker to avoid processing stale detections
-      lastProcessedSilenceTime = Date().timeIntervalSince1970
+        // Also reset the silence time tracker to avoid processing stale detections
+        lastProcessedSilenceTime = Date().timeIntervalSince1970
+      } else {
+        print("🎙️ [ExtensionSTT] TTS finished - extension will handle new audio")
+        // Reset transcript time to avoid processing old transcripts
+        lastProcessedTranscriptTime = Date().timeIntervalSince1970
+      }
     }
   }
 

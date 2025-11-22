@@ -234,6 +234,56 @@ class ScreenStreamService {
     }
   }
 
+  /// Set broadcast context for background Gemini processing
+  /// This includes chat history, conversation IDs, and API credentials
+  Future<bool> setBroadcastContext({
+    required List<Map<String, String>> chatHistory,
+    required List<String> conversationIds,
+    required String geminiApiKey,
+    required String supabaseUrl,
+    required String supabaseAnonKey,
+  }) async {
+    try {
+      final bool success = await platform.invokeMethod('setBroadcastContext', {
+        'chatHistory': chatHistory,
+        'conversationIds': conversationIds,
+        'geminiApiKey': geminiApiKey,
+        'supabaseUrl': supabaseUrl,
+        'supabaseAnonKey': supabaseAnonKey,
+      });
+      debugPrint('📺 [ScreenCapture] Broadcast context set: $success');
+      return success;
+    } catch (e) {
+      debugPrint('Error setting broadcast context: $e');
+      return false;
+    }
+  }
+
+  /// Check if there's a Gemini response ready from background processing
+  Future<Map<String, dynamic>?> checkGeminiResponse() async {
+    try {
+      final result = await platform.invokeMethod('checkGeminiResponse');
+      if (result != null && result is Map) {
+        return Map<String, dynamic>.from(result);
+      }
+      return null;
+    } catch (e) {
+      debugPrint('Error checking Gemini response: $e');
+      return null;
+    }
+  }
+
+  /// Clear the Gemini response after processing
+  Future<bool> clearGeminiResponse() async {
+    try {
+      final bool success = await platform.invokeMethod('clearGeminiResponse');
+      return success;
+    } catch (e) {
+      debugPrint('Error clearing Gemini response: $e');
+      return false;
+    }
+  }
+
   /// Cleanup resources
   void dispose() {
     if (_isCapturing) {

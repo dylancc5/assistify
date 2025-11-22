@@ -1,12 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter_dotenv/flutter_dotenv.dart';
+import 'package:uuid/uuid.dart';
 import '../services/permission_service.dart';
 import '../services/storage_service.dart';
 import '../services/speech_service.dart';
 import '../services/gemini_service.dart';
 import '../services/tts_service.dart';
 import '../services/screen_stream_service.dart';
+import '../services/embedding_service.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
 import '../models/message.dart';
@@ -26,6 +29,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   final GeminiService _geminiService;
   final TTSService _ttsService;
   final ScreenStreamService _screenStreamService;
+  final EmbeddingService _embeddingService;
 
   // Permission states
   PermissionState _screenRecordingPermission = PermissionState.notDetermined;
@@ -89,12 +93,14 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     GeminiService? geminiService,
     TTSService? ttsService,
     ScreenStreamService? screenStreamService,
+    EmbeddingService? embeddingService,
   }) : _permissionService = permissionService ?? PermissionService(),
        _storageService = storageService ?? StorageService(),
        _speechService = speechService ?? SpeechService(),
        _geminiService = geminiService ?? GeminiService(),
        _ttsService = ttsService ?? TTSService(),
-       _screenStreamService = screenStreamService ?? ScreenStreamService() {
+       _screenStreamService = screenStreamService ?? ScreenStreamService(),
+       _embeddingService = embeddingService ?? EmbeddingService() {
     // Set up callback for when broadcast stops externally
     _screenStreamService.onBroadcastStopped = _onBroadcastStopped;
   }
@@ -156,6 +162,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     // Initialize Gemini service
     await _geminiService.initialize();
+
+    // Initialize embedding service for RAG
+    await _embeddingService.initialize();
 
     // Show voice recommendation on first launch
     final hasSeenVoicePrompt = await _storageService
@@ -273,7 +282,50 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Start frame capture for Gemini context
     final success = await _screenStreamService.startCapture();
     _isScreenRecordingActive = success;
+
+    // Set broadcast context for background Gemini processing
+    if (success) {
+      await _updateBroadcastContext();
+    }
+
     notifyListeners();
+  }
+
+  /// Update the broadcast context with current chat history and credentials
+  Future<void> _updateBroadcastContext() async {
+    final geminiApiKey = dotenv.env['GEMINI_API_KEY'];
+    final supabaseUrl = dotenv.env['SUPABASE_URL'];
+    final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+
+    if (geminiApiKey == null || geminiApiKey.isEmpty) {
+      debugPrint('⚠️ [BroadcastContext] Cannot set context - missing Gemini API key');
+      return;
+    }
+
+    // Get chat history from current session messages (last 10)
+    final fullHistory = _currentMessages.map((msg) => {
+      'role': msg.sender == MessageSender.user ? 'user' : 'assistant',
+      'content': msg.text,
+    }).toList();
+    final chatHistory = fullHistory.length > 10
+        ? fullHistory.sublist(fullHistory.length - 10)
+        : fullHistory;
+
+    // Get conversation IDs for RAG
+    final conversationIds = _conversations.map((c) => c.id).toList();
+
+    debugPrint('🤖 [BroadcastContext] Setting context for background Gemini:');
+    debugPrint('   - Chat history: ${chatHistory.length} messages');
+    debugPrint('   - Conversation IDs: ${conversationIds.length} for RAG');
+    debugPrint('   - Supabase URL: ${supabaseUrl != null && supabaseUrl.isNotEmpty ? "✓" : "✗"}');
+
+    await _screenStreamService.setBroadcastContext(
+      chatHistory: chatHistory,
+      conversationIds: conversationIds,
+      geminiApiKey: geminiApiKey,
+      supabaseUrl: supabaseUrl ?? '',
+      supabaseAnonKey: supabaseAnonKey ?? '',
+    );
   }
 
   /// Toggle microphone mute (only works when chat is active)
@@ -356,6 +408,11 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Initialize message tracking
     _currentMessages = [];
     _currentMessageStartTime = DateTime.now();
+
+    // Reset Gemini chat session for fresh conversation
+    _geminiService.resetChat();
+    _geminiResponse = null;
+    _displayedResponseLength = 0;
 
     // Listen to audio level stream
     _audioLevelSubscription?.cancel();
@@ -511,15 +568,34 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         maxSamples: 10,
       );
 
+      // Retrieve relevant context from past conversations (RAG)
+      String augmentedMessage = message;
+      if (_embeddingService.isReady && _conversations.isNotEmpty) {
+        final conversationIds = _conversations.map((c) => c.id).toList();
+        final relevantContext = await _embeddingService.retrieveSimilarMessages(
+          query: message,
+          conversationIds: conversationIds,
+          limit: 5,
+        );
+
+        if (relevantContext.isNotEmpty) {
+          final contextText = relevantContext.join('\n---\n');
+          augmentedMessage = '''Here is some relevant context from our past conversations:
+$contextText
+
+Current question/message: $message''';
+        }
+      }
+
       // Send to Gemini with or without screenshots
       final String? response;
       if (screenshots.isNotEmpty) {
         response = await _geminiService.sendMessageWithScreenshots(
-          message,
+          augmentedMessage,
           screenshots,
         );
       } else {
-        response = await _geminiService.sendMessage(message);
+        response = await _geminiService.sendMessage(augmentedMessage);
       }
 
       _geminiResponse = response;
@@ -636,7 +712,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Build full transcript from all messages
       final fullTranscript = _currentMessages.map((m) => m.text).join(' ');
       final conversation = Conversation(
-        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        id: const Uuid().v4(),
         timestamp: _chatStartTime!,
         previewText: fullTranscript.length > 100
             ? '${fullTranscript.substring(0, 100)}...'
@@ -658,6 +734,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     _typewriterTimer?.cancel();
     _displayedResponseLength = 0;
     _geminiService.resetChat();
+
+    // Clear any pending background Gemini requests
+    await _screenStreamService.clearGeminiResponse();
 
     _isChatActive = false;
     _voiceAgentState = VoiceAgentState.resting;
@@ -806,19 +885,45 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   Future<void> addConversation(Conversation conversation) async {
     await _storageService.addConversation(conversation);
     _conversations = await _storageService.loadConversations();
+
+    // Store embeddings for all messages in the conversation
+    if (_embeddingService.isReady) {
+      for (final message in conversation.messages) {
+        await _embeddingService.storeMessageEmbedding(
+          conversationId: conversation.id,
+          messageText: message.text,
+        );
+      }
+    }
+
     notifyListeners();
   }
 
   /// Delete conversation from history
   Future<void> deleteConversation(String id) async {
     await _storageService.deleteConversation(id);
+
+    // Delete embeddings from Supabase
+    if (_embeddingService.isReady) {
+      await _embeddingService.deleteConversationEmbeddings(id);
+    }
+
     _conversations = await _storageService.loadConversations();
     notifyListeners();
   }
 
   /// Clear all conversations from history
   Future<void> clearAllConversations() async {
+    // Get conversation IDs before clearing
+    final conversationIds = _conversations.map((c) => c.id).toList();
+
     await _storageService.saveConversations([]);
+
+    // Delete all embeddings from Supabase
+    if (_embeddingService.isReady && conversationIds.isNotEmpty) {
+      await _embeddingService.deleteAllEmbeddings(conversationIds);
+    }
+
     _conversations = [];
     notifyListeners();
   }
@@ -860,16 +965,88 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
+    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+      // App going to background - update context with latest messages
+      if (_isChatActive && _isScreenRecordingActive) {
+        debugPrint('📱 [AppLifecycle] App backgrounding - updating broadcast context with ${_currentMessages.length} messages');
+        _updateBroadcastContext();
+      }
+    }
+
     if (state == AppLifecycleState.resumed) {
-      // App returned to foreground - restart speech recognition
+      debugPrint('📱 [AppLifecycle] App resumed from background');
+
+      // App returned to foreground - check for background Gemini responses
+      if (_isChatActive && _isScreenRecordingActive) {
+        debugPrint('🤖 [AppLifecycle] Chat + broadcast active - checking for background Gemini response...');
+        _checkBackgroundGeminiResponse();
+      }
+
+      // Restart speech recognition
       // iOS may have interrupted the audio session while backgrounded
       if (_isChatActive && !_isMicrophoneMuted) {
+        debugPrint('🎙️ [AppLifecycle] Restarting speech recognition after resume');
         _restartSpeechRecognition();
       }
     }
 
     // Note: We intentionally do NOT stop speech recognition on pause/inactive
     // This allows the voice agent to attempt to continue in the background
+  }
+
+  /// Check for and process any Gemini responses from background processing
+  Future<void> _checkBackgroundGeminiResponse() async {
+    final response = await _screenStreamService.checkGeminiResponse();
+    if (response == null) {
+      debugPrint('🤖 [BackgroundSync] No pending Gemini response found');
+      return;
+    }
+
+    final geminiResponse = response['response'] as String?;
+    final transcript = response['transcript'] as String?;
+
+    if (geminiResponse == null || transcript == null) {
+      debugPrint('⚠️ [BackgroundSync] Response data incomplete');
+      return;
+    }
+
+    debugPrint('🤖 [BackgroundSync] ✓ Found background Gemini response - syncing to chat session');
+    debugPrint('   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."');
+    debugPrint('   - Response length: ${geminiResponse.length} chars');
+
+    // Clear the response flag
+    await _screenStreamService.clearGeminiResponse();
+
+    // Add user message to current messages
+    final userMessage = Message(
+      id: const Uuid().v4(),
+      text: transcript,
+      timestamp: DateTime.now(),
+      sender: MessageSender.user,
+    );
+    _currentMessages.add(userMessage);
+
+    // Add assistant response to current messages
+    final agentMessage = Message(
+      id: const Uuid().v4(),
+      text: geminiResponse,
+      timestamp: DateTime.now(),
+      sender: MessageSender.agent,
+    );
+    _currentMessages.add(agentMessage);
+
+    // Inject into Gemini chat session for continuity
+    _geminiService.injectHistoryEntry(transcript, geminiResponse);
+    debugPrint('🤖 [BackgroundSync] Injected into chat session for continuity');
+
+    // Update UI
+    _geminiResponse = geminiResponse;
+    _displayedResponseLength = geminiResponse.length;
+    notifyListeners();
+
+    // Update broadcast context with new history
+    await _updateBroadcastContext();
+    debugPrint('🤖 [BackgroundSync] Sync complete - UI updated');
   }
 
   /// Restart speech recognition after coming back from background

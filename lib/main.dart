@@ -1,4 +1,6 @@
-// TODO: Turn conversation history into vector embedding RAG via Supabase
+// TODO: Finish background voice agent functionality
+
+// TODO: Build in agentic components for edit app settings/controls
 // TODO: Improve prompt engineering for better personality and responses
 //       Should be aware of its own features + limitations,
 //       note when screen capture ends, etc.
@@ -6,12 +8,11 @@
 // TODO: Replace Gemini with Baidu ERNIE (must test!)
 // TODO: Need to fine tune model?
 
-// TODO: Build in agentic components for edit app settings/controls
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'constants/colors.dart';
 import 'constants/theme.dart';
 import 'providers/app_state_provider.dart';
@@ -24,6 +25,16 @@ void main() async {
 
   // Load environment variables
   await dotenv.load(fileName: '.env');
+
+  // Initialize Supabase
+  final supabaseUrl = dotenv.env['SUPABASE_URL'];
+  final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
+  if (supabaseUrl != null &&
+      supabaseUrl != 'your_supabase_url_here' &&
+      supabaseAnonKey != null &&
+      supabaseAnonKey != 'your_supabase_anon_key_here') {
+    await Supabase.initialize(url: supabaseUrl, anonKey: supabaseAnonKey);
+  }
 
   // Set system UI overlay style
   SystemChrome.setSystemUIOverlayStyle(

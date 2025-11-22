@@ -146,6 +146,41 @@ GUIDANCE STYLE:
     }
   }
 
+  /// Get the current chat history as a list of maps
+  /// Used for passing context to native background processing
+  List<Map<String, String>> getChatHistory() {
+    if (_chatSession == null) return [];
+
+    final history = _chatSession!.history.toList();
+    return history.map((content) {
+      final role = content.role == 'user' ? 'user' : 'assistant';
+      final text = content.parts
+          .whereType<TextPart>()
+          .map((p) => p.text)
+          .join(' ');
+      return {'role': role, 'content': text};
+    }).toList();
+  }
+
+  /// Inject a history entry into the chat session
+  /// Used to sync background-processed messages back into the session
+  void injectHistoryEntry(String userMessage, String assistantResponse) {
+    if (_chatSession == null || _model == null) {
+      debugPrint('Cannot inject history - chat session not initialized');
+      return;
+    }
+
+    // Get current history and add new entries
+    final currentHistory = _chatSession!.history.toList();
+    currentHistory.add(Content.text(userMessage));
+    currentHistory.add(Content.model([TextPart(assistantResponse)]));
+
+    // Create new chat session with updated history
+    _chatSession = _model!.startChat(history: currentHistory);
+
+    debugPrint('Injected history entry - user: "${userMessage.substring(0, userMessage.length.clamp(0, 50))}..."');
+  }
+
   /// Dispose of resources
   void dispose() {
     _chatSession = null;

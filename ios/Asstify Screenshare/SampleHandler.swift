@@ -8,6 +8,8 @@
 import ReplayKit
 import UIKit
 import CoreImage
+import Speech
+import AVFoundation
 
 class SampleHandler: RPBroadcastSampleHandler {
     private let appGroupIdentifier = "group.com.dylancc5.assistify.broadcast"
@@ -19,7 +21,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     // Audio chunk properties
     private var audioChunkSequence: Int = 0
-    private let maxAudioChunks = 200  // Keep more audio chunks than frames
+    private let maxAudioChunks = 100  // 50 seconds max at 500ms chunks
     private var currentAudioData = Data()
     private let audioChunkDuration: TimeInterval = 0.5  // Save chunk every 500ms
     private var lastAudioChunkTime: Date?
@@ -29,6 +31,15 @@ class SampleHandler: RPBroadcastSampleHandler {
     // Silence detection for audio
     private var consecutiveSilentChunks: Int = 0
     private let silenceThresholdChunks: Int = 5  // 5 chunks = 2.5 seconds of silence
+
+    // Speech recognition in extension
+    private var speechRecognizer: SFSpeechRecognizer?
+    private var recognitionRequest: SFSpeechAudioBufferRecognitionRequest?
+    private var recognitionTask: SFSpeechRecognitionTask?
+    private var isRecognizing = false
+    private var lastTranscript = ""
+    private var silenceTimer: Timer?
+    private let silenceTimeout: TimeInterval = 2.5  // Same as chunk-based silence detection
     
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         // User has requested to start the broadcast. Setup info from the UI extension can be supplied but optional.
@@ -43,6 +54,9 @@ class SampleHandler: RPBroadcastSampleHandler {
 
         // Update broadcast status
         updateBroadcastStatus(isBroadcasting: true, frameCount: 0)
+
+        // Initialize speech recognition
+        setupSpeechRecognition()
     }
     
     override func broadcastPaused() {
@@ -65,6 +79,9 @@ class SampleHandler: RPBroadcastSampleHandler {
         // Clean up old frames and audio
         clearOldFrames()
         clearOldAudioChunks()
+
+        // Stop speech recognition
+        stopSpeechRecognition()
     }
     
     override func processSampleBuffer(_ sampleBuffer: CMSampleBuffer, with sampleBufferType: RPSampleBufferType) {
@@ -77,8 +94,16 @@ class SampleHandler: RPBroadcastSampleHandler {
             // Not needed for STT
             break
         case RPSampleBufferType.audioMic:
-            // Handle audio sample buffer for mic audio - save for STT
+            // Handle audio sample buffer for mic audio
+            // Feed to speech recognizer for real-time STT (primary method)
+            feedAudioToRecognizer(sampleBuffer)
+            // Also save chunks as fallback (in case extension STT fails)
             processMicAudio(sampleBuffer)
+            
+            // Periodically check for language changes
+            if Int.random(in: 0..<100) == 0 {  // Check ~1% of the time to avoid overhead
+                updateSpeechRecognitionLanguage()
+            }
             break
         @unknown default:
             // Handle other sample buffer types
@@ -436,5 +461,353 @@ class SampleHandler: RPBroadcastSampleHandler {
         userDefaults.synchronize()
 
         print("[BroadcastExtension] Silence detected - marked for main app")
+    }
+
+    // MARK: - Speech Recognition in Extension
+
+    private func setupSpeechRecognition() {
+        print("[BroadcastExtension] Setting up speech recognition")
+
+        // Read language code from UserDefaults (set by main app)
+        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+            print("[BroadcastExtension] Could not access App Group UserDefaults")
+            return
+        }
+        
+        let languageCode = userDefaults.string(forKey: "speechLanguageCode") ?? "en-US"
+        print("[BroadcastExtension] Using language code: \(languageCode)")
+
+        // Initialize recognizer with language from main app
+        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: languageCode))
+
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            print("[BroadcastExtension] Speech recognizer not available for language: \(languageCode)")
+            return
+        }
+
+        // Use on-device recognition to reduce memory
+        if #available(iOS 13.0, *) {
+            recognizer.supportsOnDeviceRecognition = true
+        }
+
+        startRecognition()
+    }
+    
+    private func updateSpeechRecognitionLanguage() {
+        // Check if language changed and restart recognition if needed
+        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+            return
+        }
+        
+        let newLanguageCode = userDefaults.string(forKey: "speechLanguageCode") ?? "en-US"
+        let currentLocale = speechRecognizer?.locale.identifier ?? "en-US"
+        
+        if newLanguageCode != currentLocale {
+            print("[BroadcastExtension] Language changed from \(currentLocale) to \(newLanguageCode) - restarting recognition")
+            stopSpeechRecognition()
+            
+            // Update recognizer
+            speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: newLanguageCode))
+            
+            if let recognizer = speechRecognizer, recognizer.isAvailable {
+                if #available(iOS 13.0, *) {
+                    recognizer.supportsOnDeviceRecognition = true
+                }
+                startRecognition()
+            }
+        }
+    }
+
+    private func startRecognition() {
+        guard let recognizer = speechRecognizer, recognizer.isAvailable else {
+            print("[BroadcastExtension] Cannot start recognition - recognizer not available")
+            // Mark that extension STT is not active
+            if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+                userDefaults.set(false, forKey: "extensionSTTActive")
+                userDefaults.synchronize()
+            }
+            return
+        }
+
+        // Cancel any existing task
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        // Create recognition request
+        recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
+
+        guard let request = recognitionRequest else {
+            print("[BroadcastExtension] Could not create recognition request")
+            return
+        }
+
+        request.shouldReportPartialResults = true
+
+        // Use on-device if available
+        if #available(iOS 13.0, *) {
+            request.requiresOnDeviceRecognition = recognizer.supportsOnDeviceRecognition
+        }
+
+        // Start recognition task
+        print("🎤 [BroadcastExtension] Starting recognition task...")
+        recognitionTask = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            guard let self = self else { return }
+
+            if let result = result {
+                let transcript = result.bestTranscription.formattedString
+
+                // Only process if transcript changed
+                if transcript != self.lastTranscript && !transcript.isEmpty {
+                    self.lastTranscript = transcript
+                    print("🎤 [BroadcastExtension] Partial transcript: \(transcript)")
+
+                    // Reset silence timer on new speech
+                    self.resetSilenceTimer()
+                }
+
+                // If final result, save it
+                if result.isFinal {
+                    print("🎤 [BroadcastExtension] Final transcript: \(transcript)")
+                    self.saveTranscription(transcript)
+                    self.lastTranscript = ""
+                    // Restart recognition for next utterance
+                    self.restartRecognition()
+                }
+            }
+
+            if let error = error {
+                print("❌ [BroadcastExtension] Recognition error: \(error.localizedDescription)")
+
+                // Save any partial transcript before error
+                if !self.lastTranscript.isEmpty {
+                    self.saveTranscription(self.lastTranscript)
+                    self.lastTranscript = ""
+                }
+
+                // Restart on error (common for timeout)
+                self.restartRecognition()
+            }
+        }
+
+        isRecognizing = true
+        
+        // Mark that extension STT is active
+        if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+            userDefaults.set(true, forKey: "extensionSTTActive")
+            userDefaults.synchronize()
+        }
+        
+        print("[BroadcastExtension] Speech recognition started")
+    }
+
+    private func stopSpeechRecognition() {
+        silenceTimer?.invalidate()
+        silenceTimer = nil
+
+        recognitionTask?.cancel()
+        recognitionTask = nil
+
+        recognitionRequest?.endAudio()
+        recognitionRequest = nil
+
+        isRecognizing = false
+
+        // Mark that extension STT is no longer active
+        if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+            userDefaults.set(false, forKey: "extensionSTTActive")
+            userDefaults.synchronize()
+        }
+
+        // Save any remaining transcript
+        if !lastTranscript.isEmpty {
+            saveTranscription(lastTranscript)
+            lastTranscript = ""
+        }
+
+        print("[BroadcastExtension] Speech recognition stopped")
+    }
+
+    private func restartRecognition() {
+        // Small delay before restarting
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+            self?.startRecognition()
+        }
+    }
+
+    private func resetSilenceTimer() {
+        silenceTimer?.invalidate()
+
+        // Schedule timer on main run loop to ensure it fires
+        DispatchQueue.main.async { [weak self] in
+            guard let self = self else { return }
+
+            self.silenceTimer = Timer.scheduledTimer(withTimeInterval: self.silenceTimeout, repeats: false) { [weak self] _ in
+                guard let self = self else { return }
+
+                // Silence detected - finalize current transcript
+                if !self.lastTranscript.isEmpty {
+                    print("🔇 [BroadcastExtension] Silence timeout - saving transcript")
+                    self.saveTranscription(self.lastTranscript)
+                    self.lastTranscript = ""
+
+                    // End current request and restart
+                    self.recognitionRequest?.endAudio()
+                    self.restartRecognition()
+                }
+            }
+        }
+    }
+
+    private func saveTranscription(_ text: String) {
+        let trimmed = text.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty else { return }
+
+        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+            return
+        }
+
+        // Save transcription for main app to pick up
+        // Use a timestamp-based key to allow multiple transcripts
+        let timestamp = Date().timeIntervalSince1970
+        userDefaults.set(trimmed, forKey: "extensionTranscript")
+        userDefaults.set(timestamp, forKey: "extensionTranscriptTime")
+        userDefaults.set(true, forKey: "hasNewTranscript")
+        userDefaults.set(true, forKey: "extensionSTTActive")  // Flag that extension STT is working
+
+        // Get current frame file paths for Gemini processing
+        let framePaths = getCurrentFramePaths()
+        if let framePathsData = try? JSONSerialization.data(withJSONObject: framePaths, options: []),
+           let framePathsString = String(data: framePathsData, encoding: .utf8) {
+            userDefaults.set(framePathsString, forKey: "geminiFramePaths")
+            print("🤖 [BroadcastExtension] Saved \(framePaths.count) frame paths for background Gemini")
+        } else {
+            print("⚠️ [BroadcastExtension] Failed to serialize frame paths for Gemini")
+        }
+
+        // Set flag for background Gemini processing
+        userDefaults.set(true, forKey: "geminiRequestPending")
+        userDefaults.set(timestamp, forKey: "geminiRequestTime")
+
+        userDefaults.synchronize()
+
+        print("🤖 [BroadcastExtension] Set geminiRequestPending=true - using EXTENSION STT (native Speech Recognition)")
+        print("[BroadcastExtension] Saved transcript: \(trimmed) with \(framePaths.count) frame paths")
+    }
+
+    private func getCurrentFramePaths() -> [String] {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            return []
+        }
+
+        let framesDirectory = containerURL.appendingPathComponent("frames", isDirectory: true)
+
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: framesDirectory.path) else {
+            return []
+        }
+
+        // Get sorted frame files (sorted by timestamp in filename)
+        let frameFiles = files.filter { $0.hasSuffix(".jpg") }.sorted()
+
+        // Return full paths
+        return frameFiles.map { framesDirectory.appendingPathComponent($0).path }
+    }
+
+    private func feedAudioToRecognizer(_ sampleBuffer: CMSampleBuffer) {
+        guard isRecognizing else {
+            // Log periodically to avoid spam
+            if Int.random(in: 0..<1000) == 0 {
+                print("⚠️ [BroadcastExtension] Audio feed skipped - not recognizing")
+            }
+            return
+        }
+
+        guard let request = recognitionRequest else {
+            if Int.random(in: 0..<1000) == 0 {
+                print("⚠️ [BroadcastExtension] Audio feed skipped - no recognition request")
+            }
+            return
+        }
+
+        // Convert CMSampleBuffer to AVAudioPCMBuffer
+        guard let audioBuffer = convertToPCMBuffer(sampleBuffer) else {
+            if Int.random(in: 0..<1000) == 0 {
+                print("⚠️ [BroadcastExtension] Audio feed skipped - PCM conversion failed")
+            }
+            return
+        }
+
+        // Append audio buffer to recognition request
+        request.append(audioBuffer)
+    }
+    
+    private func convertToPCMBuffer(_ sampleBuffer: CMSampleBuffer) -> AVAudioPCMBuffer? {
+        // Get format description
+        guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else {
+            return nil
+        }
+        
+        // Get audio stream basic description
+        guard let asbd = CMAudioFormatDescriptionGetStreamBasicDescription(formatDescription)?.pointee else {
+            return nil
+        }
+        
+        // Create AVAudioFormat from ASBD
+        guard let audioFormat = AVAudioFormat(commonFormat: .pcmFormatFloat32,
+                                             sampleRate: asbd.mSampleRate,
+                                             channels: UInt32(asbd.mChannelsPerFrame),
+                                             interleaved: false) else {
+            return nil
+        }
+        
+        // Get audio data from sample buffer
+        guard let blockBuffer = CMSampleBufferGetDataBuffer(sampleBuffer) else {
+            return nil
+        }
+        
+        var length = 0
+        var dataPointer: UnsafeMutablePointer<Int8>?
+        let status = CMBlockBufferGetDataPointer(blockBuffer, atOffset: 0, lengthAtOffsetOut: nil, totalLengthOut: &length, dataPointerOut: &dataPointer)
+        
+        guard status == kCMBlockBufferNoErr, let pointer = dataPointer else {
+            return nil
+        }
+        
+        // Calculate number of frames
+        let bytesPerFrame = Int(asbd.mBytesPerFrame)
+        let frameCount = length / bytesPerFrame
+        
+        // Create PCM buffer
+        guard let pcmBuffer = AVAudioPCMBuffer(pcmFormat: audioFormat, frameCapacity: AVAudioFrameCount(frameCount)) else {
+            return nil
+        }
+        
+        pcmBuffer.frameLength = AVAudioFrameCount(frameCount)
+        
+        // Copy audio data to PCM buffer
+        // The sample buffer might be in Int16 format, so we need to convert to Float32
+        guard let floatChannelData = pcmBuffer.floatChannelData else {
+            return nil
+        }
+        let floatPointer = floatChannelData[0]
+        
+        // Convert raw pointer to the appropriate type
+        let rawPointer = UnsafeRawPointer(pointer)
+        
+        if asbd.mFormatFlags & kAudioFormatFlagIsSignedInteger != 0 {
+            // Convert Int16 to Float32
+            let int16Pointer = rawPointer.bindMemory(to: Int16.self, capacity: frameCount * Int(asbd.mChannelsPerFrame))
+            let sampleCount = frameCount * Int(asbd.mChannelsPerFrame)
+            
+            for i in 0..<sampleCount {
+                floatPointer[i] = Float(int16Pointer[i]) / 32768.0
+            }
+        } else {
+            // Already float format, copy directly
+            let sourceFloatPointer = rawPointer.bindMemory(to: Float32.self, capacity: frameCount * Int(asbd.mChannelsPerFrame))
+            let sampleCount = frameCount * Int(asbd.mChannelsPerFrame)
+            floatPointer.assign(from: sourceFloatPointer, count: sampleCount)
+        }
+        
+        return pcmBuffer
     }
 }
