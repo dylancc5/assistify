@@ -51,6 +51,7 @@
   "microphone": "麦克风",
   "micOn": "麦克风：开",
   "micOff": "麦克风：关",
+  "micNone": "麦克风：无",
   "shareScreen": "共享屏幕",
   "assistifyNeedsToSeeYourScreen": "Assistify 需要查看您的屏幕",
   "thisHelpsMeUnderstandWhatYouAreLookingAt": "这有助于我了解您正在查看的内容并提供更好的帮助",
@@ -178,6 +179,7 @@
   "feedbackIssueHint": "描述您的问题或建议...",
   "feedbackRatingLabel": "评分（可选）",
   "feedbackSubmit": "提交",
-  "feedbackSent": "感谢您的反馈！"
+  "feedbackSent": "感谢您的反馈！",
+  "tapToViewMessages": "点击查看 {count} 条消息"
 }
 

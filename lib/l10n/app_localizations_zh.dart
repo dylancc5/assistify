@@ -125,6 +125,9 @@ class AppLocalizationsZh extends AppLocalizations {
   String get micOff => '麦克风：关';
 
   @override
+  String get micNone => '麦克风：无';
+
+  @override
   String get shareScreen => '共享屏幕';
 
   @override
@@ -527,4 +530,9 @@ class AppLocalizationsZh extends AppLocalizations {
 
   @override
   String get feedbackSent => '感谢您的反馈！';
+
+  @override
+  String tapToViewMessages(int count) {
+    return '点击查看 $count 条消息';
+  }
 }

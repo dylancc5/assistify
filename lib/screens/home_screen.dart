@@ -494,15 +494,25 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 // Microphone Mute Button
                 ControlButton(
-                  icon: appState.isMicrophoneMuted ? Icons.mic_off : Icons.mic,
-                  label: appState.isMicrophoneMuted ? l10n.micOff : l10n.micOn,
-                  backgroundColor: appState.isMicrophoneMuted
-                      ? colors.accentCoral
-                      : colors.primaryBlue,
-                  labelColor: appState.isMicrophoneMuted
-                      ? colors.accentCoral
-                      : colors.primaryBlue,
-                  onTap: () => appState.toggleMicrophoneMute(context),
+                  icon: appState.isChatActive
+                      ? (appState.isMicrophoneMuted ? Icons.mic_off : Icons.mic)
+                      : Icons.mic_off,
+                  label: appState.isChatActive
+                      ? (appState.isMicrophoneMuted ? l10n.micOff : l10n.micOn)
+                      : l10n.micNone,
+                  backgroundColor: appState.isChatActive
+                      ? (appState.isMicrophoneMuted
+                          ? colors.accentCoral
+                          : colors.primaryBlue)
+                      : colors.disabled,
+                  labelColor: appState.isChatActive
+                      ? (appState.isMicrophoneMuted
+                          ? colors.accentCoral
+                          : colors.primaryBlue)
+                      : colors.textSecondary.withValues(alpha: 0.5),
+                  onTap: appState.isChatActive
+                      ? () => appState.toggleMicrophoneMute(context)
+                      : null,
                   size: buttonSize,
                 ),
 

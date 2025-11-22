@@ -133,6 +133,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get micOff => 'Mic: OFF';
 
   @override
+  String get micNone => 'Mic: None';
+
+  @override
   String get shareScreen => 'Share Screen';
 
   @override
@@ -567,4 +570,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get feedbackSent => 'Thank you for your feedback!';
+
+  @override
+  String tapToViewMessages(int count) {
+    return 'Tap to view $count messages';
+  }
 }

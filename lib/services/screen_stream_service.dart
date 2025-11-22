@@ -10,6 +10,26 @@ class ScreenStreamService {
 
   bool _isCapturing = false;
 
+  /// Callback when broadcast stops externally (e.g., from Control Center)
+  Function? onBroadcastStopped;
+
+  ScreenStreamService() {
+    // Set up method call handler for native callbacks
+    platform.setMethodCallHandler(_handleMethodCall);
+  }
+
+  Future<dynamic> _handleMethodCall(MethodCall call) async {
+    switch (call.method) {
+      case 'broadcastStopped':
+        debugPrint('📺 [ScreenCapture] Received broadcastStopped callback from native');
+        _isCapturing = false;
+        onBroadcastStopped?.call();
+        break;
+      default:
+        debugPrint('Unknown method call: ${call.method}');
+    }
+  }
+
   /// Check if currently capturing frames
   /// Note: This only reflects the local flag. Use refreshCaptureStatus() to sync with native.
   bool get isCapturing => _isCapturing;

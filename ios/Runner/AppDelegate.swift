@@ -27,6 +27,7 @@ import Speech
   private var isCapturingFrames: Bool = false
   private let frameCaptureInterval: TimeInterval = 0.5  // 500ms between frames
   private var isUsingBroadcastExtension: Bool = false
+  private var useRawAudioSTT: Bool = false  // Use raw audio recording for STT when broadcasting
 
   // Speech recognition properties
   private var speechRecognizer: SFSpeechRecognizer?
@@ -44,7 +45,7 @@ import Speech
   private var rawAudioURL: URL?
   private var rawAudioSilenceTimer: Timer?
   private var lastAudioLevel: Float = 0.0
-  private let rawAudioSilenceThreshold: TimeInterval = 1.5
+  private let rawAudioSilenceThreshold: TimeInterval = 2.5
 
   // Silence detection properties
   private var silenceTimer: Timer?
@@ -52,7 +53,7 @@ import Speech
   private var currentLanguageCode: String = "en-US"  // Track current language for restart
   private var speechEventChannel: FlutterEventChannel?
   private var speechEventSink: FlutterEventSink?
-  private let silenceThreshold: TimeInterval = 1.5  // seconds of silence to trigger segment end
+  private let silenceThreshold: TimeInterval = 2.5  // seconds of silence to trigger segment end
 
   // TTS properties
   private var ttsMethodChannel: FlutterMethodChannel?
@@ -172,6 +173,20 @@ import Speech
       self,
       selector: #selector(handleAudioInterruption),
       name: AVAudioSession.interruptionNotification,
+      object: nil
+    )
+
+    // Set up app lifecycle observers for foreground/background detection
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appDidBecomeActive),
+      name: UIApplication.didBecomeActiveNotification,
+      object: nil
+    )
+    NotificationCenter.default.addObserver(
+      self,
+      selector: #selector(appWillResignActive),
+      name: UIApplication.willResignActiveNotification,
       object: nil
     )
 
@@ -520,7 +535,7 @@ import Speech
 
       // Create broadcast picker view
       let broadcastPicker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 60, height: 60))
-      broadcastPicker.showsMicrophoneButton = false
+      broadcastPicker.showsMicrophoneButton = true  // Enable mic for raw audio STT
 
       // Add to view hierarchy temporarily so it can present the picker
       broadcastPicker.alpha = 0
@@ -855,25 +870,52 @@ import Speech
         print("📺 [ScreenCapture] Broadcast extension stopped")
         self.isUsingBroadcastExtension = false
         self.isCapturingFrames = false
+        self.useRawAudioSTT = false  // Switch back to normal STT
+
+        // Stop broadcast audio monitoring
+        self.stopBroadcastAudioMonitoring()
+        self.isRecordingRawAudio = false
+
+        // Clear any remaining audio chunks
+        self.clearBroadcastAudioChunks()
+
+        // Notify Flutter that broadcast stopped so UI can update
+        DispatchQueue.main.async {
+          self.methodChannel?.invokeMethod("broadcastStopped", arguments: nil)
+        }
+
+        // Restart normal speech recognition if user was listening
+        if self.shouldBeListening && self.isAppInForeground {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+            print("🎤 [Speech] Restarting normal speech recognition after broadcast stopped")
+            self.startFreshRecognition()
+          }
+        }
       } else if !wasBroadcasting && isNowBroadcasting {
         // Broadcast extension just started
-        print("📺 [ScreenCapture] Broadcast extension started - switching to SYSTEM-WIDE capture")
+        print("📺 [ScreenCapture] Broadcast extension started - switching to SYSTEM-WIDE capture + raw audio STT")
         self.isUsingBroadcastExtension = true
         self.isCapturingFrames = true
+        self.useRawAudioSTT = true  // Use raw audio recording for STT
 
-        // Reconfigure audio session and restart speech recognition after a delay
+        // Reconfigure audio session and switch to raw audio STT after a delay
         // to allow the broadcast extension to fully initialize
         DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
           guard let self = self else { return }
 
-          // Reconfigure audio session to ensure speech recognition continues working
+          // Reconfigure audio session to ensure audio continues working
           self.reconfigureAudioSessionForSpeech()
 
-          // If we were listening before, restart speech recognition
-          if self.shouldBeListening && !self.isListening {
-            print("🎤 [Speech] Restarting speech recognition after broadcast started...")
+          // If we were listening before, stop normal recognition and start raw audio recording
+          if self.shouldBeListening {
+            print("🎙️ [RawAudio] Switching to raw audio STT for broadcast mode...")
+            // Stop normal speech recognition if running
+            if self.isListening {
+              self.stopAudioEngine()
+            }
+            // Start raw audio recording after a brief delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-              self.startFreshRecognition()
+              self.startRawAudioRecording()
             }
           }
         }
@@ -936,6 +978,17 @@ import Speech
     // Save language code for potential restart
     currentLanguageCode = languageCode
 
+    // Mark that user wants to be listening
+    shouldBeListening = true
+
+    // If we're in broadcast mode, use raw audio STT instead
+    if useRawAudioSTT {
+      print("🎙️ [RawAudio] Starting raw audio STT (broadcast mode active)")
+      startRawAudioRecording()
+      result(true)
+      return
+    }
+
     // Create or update speech recognizer with the specified language
     let locale = Locale(identifier: languageCode)
     let newRecognizer = SFSpeechRecognizer(locale: locale)
@@ -956,9 +1009,6 @@ import Speech
                          details: nil))
       return
     }
-
-    // Mark that user wants to be listening
-    shouldBeListening = true
 
     // If already listening, stop first to restart with new language
     if isListening {
@@ -1071,8 +1121,15 @@ import Speech
             print("🎤 [Speech] Will auto-retry in 500ms...")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
               guard let self = self, !self.isListening, self.shouldBeListening else { return }
-              print("🎤 [Speech] Auto-retrying speech recognition...")
-              self.startFreshRecognition()
+
+              // If app is in background, use raw audio recording fallback
+              if !self.isAppInForeground {
+                print("🎤 [Speech] App in background - switching to raw audio recording")
+                self.startRawAudioRecording()
+              } else {
+                print("🎤 [Speech] Auto-retrying speech recognition...")
+                self.startFreshRecognition()
+              }
             }
           }
         }
@@ -1367,8 +1424,15 @@ import Speech
         print("🎤 [Speech] Will auto-retry in 500ms...")
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
           guard let self = self, !self.isListening, self.shouldBeListening else { return }
-          print("🎤 [Speech] Auto-retrying speech recognition...")
-          self.startFreshRecognition()
+
+          // If app is in background, use raw audio recording fallback
+          if !self.isAppInForeground {
+            print("🎤 [Speech] App in background - switching to raw audio recording")
+            self.startRawAudioRecording()
+          } else {
+            print("🎤 [Speech] Auto-retrying speech recognition...")
+            self.startFreshRecognition()
+          }
         }
       }
     }
@@ -1377,6 +1441,497 @@ import Speech
   private func cancelSilenceTimer() {
     silenceTimer?.invalidate()
     silenceTimer = nil
+  }
+
+  // MARK: - App Lifecycle Methods
+
+  @objc private func appDidBecomeActive() {
+    print("📱 [AppLifecycle] App became active (foreground)")
+    isAppInForeground = true
+
+    // If we were recording raw audio with AVAudioRecorder, stop and transcribe it
+    if isRecordingRawAudio && audioRecorder != nil {
+      stopRawAudioAndTranscribe()
+    }
+
+    // If in broadcast mode, check for any accumulated audio chunks to process
+    if useRawAudioSTT && isBroadcastExtensionActive() {
+      print("🎙️ [BroadcastAudio] App returned to foreground - checking for accumulated audio")
+
+      // Restart the monitoring timer if it was stopped
+      if broadcastAudioMonitorTimer == nil {
+        startBroadcastAudioMonitoring()
+      }
+
+      // Process any chunks that accumulated while in background
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+        self?.processAccumulatedBroadcastAudio()
+      }
+    }
+  }
+
+  /// Process any audio chunks that accumulated while app was in background
+  private func processAccumulatedBroadcastAudio() {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      return
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path) else {
+      return
+    }
+
+    let audioFiles = files.filter { $0.hasSuffix(".pcm") }
+
+    if audioFiles.count > 0 {
+      print("🎙️ [BroadcastAudio] Found \(audioFiles.count) accumulated chunks from background - processing")
+      aggregateAndTranscribeAudioChunks()
+    }
+  }
+
+  @objc private func appWillResignActive() {
+    print("📱 [AppLifecycle] App will resign active (background)")
+    isAppInForeground = false
+  }
+
+  // MARK: - Raw Audio Recording Methods
+
+  private func startRawAudioRecording() {
+    // If in broadcast mode, don't use AVAudioRecorder - use chunks from extension instead
+    if useRawAudioSTT && isBroadcastExtensionActive() {
+      print("🎙️ [RawAudio] Using broadcast extension audio chunks (not AVAudioRecorder)")
+      isRecordingRawAudio = true
+      // Start monitoring for silence detection from extension
+      startBroadcastAudioMonitoring()
+      return
+    }
+
+    guard !isRecordingRawAudio else {
+      print("🎙️ [RawAudio] Already recording raw audio")
+      return
+    }
+
+    print("🎙️ [RawAudio] Starting raw audio recording (background fallback)")
+
+    // Create URL for raw audio file
+    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+    rawAudioURL = documentsPath.appendingPathComponent("raw_audio_\(timestamp).m4a")
+
+    guard let audioURL = rawAudioURL else {
+      print("🎙️ [RawAudio] Failed to create audio URL")
+      return
+    }
+
+    // Configure audio session - use mixWithOthers to work alongside broadcast extension
+    do {
+      let audioSession = AVAudioSession.sharedInstance()
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+      try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+    } catch {
+      print("🎙️ [RawAudio] Audio session error: \(error.localizedDescription)")
+      return
+    }
+
+    // Recording settings
+    let settings: [String: Any] = [
+      AVFormatIDKey: Int(kAudioFormatMPEG4AAC),
+      AVSampleRateKey: 44100,
+      AVNumberOfChannelsKey: 1,
+      AVEncoderAudioQualityKey: AVAudioQuality.high.rawValue
+    ]
+
+    do {
+      audioRecorder = try AVAudioRecorder(url: audioURL, settings: settings)
+      audioRecorder?.isMeteringEnabled = true
+      audioRecorder?.record()
+      isRecordingRawAudio = true
+
+      // Start monitoring audio levels for silence detection
+      startRawAudioSilenceMonitoring()
+
+      print("🎙️ [RawAudio] Recording started at: \(audioURL.path)")
+    } catch {
+      print("🎙️ [RawAudio] Failed to start recording: \(error.localizedDescription)")
+    }
+  }
+
+  private func startRawAudioSilenceMonitoring() {
+    // Start the initial silence end timer (in case user doesn't speak at all)
+    resetRawAudioSilenceEndTimer()
+
+    // Monitor audio levels every 100ms
+    rawAudioSilenceTimer = Timer.scheduledTimer(withTimeInterval: 0.1, repeats: true) { [weak self] _ in
+      guard let self = self, let recorder = self.audioRecorder, recorder.isRecording else { return }
+
+      recorder.updateMeters()
+      let averagePower = recorder.averagePower(forChannel: 0)
+
+      // Convert dB to normalized level (0-1)
+      let normalizedLevel = max(0, min(1, (averagePower + 60) / 60))
+
+      // Check for silence (below threshold)
+      let silenceThreshold: Float = 0.05
+      if normalizedLevel >= silenceThreshold {
+        // Sound detected - reset the silence end timer
+        self.lastAudioLevel = normalizedLevel
+        self.resetRawAudioSilenceEndTimer()
+      } else {
+        // Silence detected - timer continues running
+        self.lastAudioLevel = normalizedLevel
+      }
+    }
+  }
+
+  private var rawAudioSilenceEndTimer: Timer?
+
+  private func resetRawAudioSilenceEndTimer() {
+    rawAudioSilenceEndTimer?.invalidate()
+    rawAudioSilenceEndTimer = Timer.scheduledTimer(withTimeInterval: rawAudioSilenceThreshold, repeats: false) { [weak self] _ in
+      guard let self = self else { return }
+      // Silence detected for threshold duration, stop and transcribe
+      print("🎙️ [RawAudio] Silence detected, stopping and transcribing")
+      self.stopRawAudioAndTranscribe()
+    }
+  }
+
+  private func stopRawAudioAndTranscribe() {
+    guard isRecordingRawAudio, let recorder = audioRecorder else { return }
+
+    print("🎙️ [RawAudio] Stopping raw audio recording")
+
+    // Stop monitoring
+    rawAudioSilenceTimer?.invalidate()
+    rawAudioSilenceTimer = nil
+    rawAudioSilenceEndTimer?.invalidate()
+    rawAudioSilenceEndTimer = nil
+
+    // Stop recording
+    recorder.stop()
+    isRecordingRawAudio = false
+
+    // Transcribe the recorded audio
+    guard let audioURL = rawAudioURL else {
+      print("🎙️ [RawAudio] No audio URL to transcribe")
+      return
+    }
+
+    transcribeRawAudio(url: audioURL)
+  }
+
+  private func transcribeRawAudio(url: URL) {
+    print("🎙️ [RawAudio] Transcribing audio file: \(url.lastPathComponent)")
+
+    // Create speech recognizer with current language
+    guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: currentLanguageCode)) else {
+      print("🎙️ [RawAudio] Speech recognizer not available for \(currentLanguageCode)")
+      cleanupRawAudioFile(url: url)
+      return
+    }
+
+    guard recognizer.isAvailable else {
+      print("🎙️ [RawAudio] Speech recognizer not available")
+      cleanupRawAudioFile(url: url)
+      return
+    }
+
+    // Create recognition request from audio file
+    let request = SFSpeechURLRecognitionRequest(url: url)
+    request.shouldReportPartialResults = false
+
+    // Perform transcription
+    recognizer.recognitionTask(with: request) { [weak self] result, error in
+      guard let self = self else { return }
+
+      if let error = error {
+        print("🎙️ [RawAudio] Transcription error: \(error.localizedDescription)")
+        self.cleanupRawAudioFile(url: url)
+
+        // Still restart recording if in broadcast mode
+        if self.shouldBeListening && self.useRawAudioSTT {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            print("🎙️ [RawAudio] Restarting raw audio recording after error")
+            self.startRawAudioRecording()
+          }
+        }
+        return
+      }
+
+      guard let result = result, result.isFinal else { return }
+
+      let transcript = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
+
+      if transcript.isEmpty {
+        print("🎙️ [RawAudio] Transcription was empty")
+        self.cleanupRawAudioFile(url: url)
+
+        // Still restart recording if in broadcast mode
+        if self.shouldBeListening && self.useRawAudioSTT {
+          DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            print("🎙️ [RawAudio] Restarting raw audio recording after empty transcription")
+            self.startRawAudioRecording()
+          }
+        }
+        return
+      }
+
+      print("🎙️ [RawAudio] Transcribed: \(transcript)")
+
+      // Send transcription to Flutter as a segment complete event
+      if let sink = self.speechEventSink {
+        DispatchQueue.main.async {
+          sink(["event": "segmentComplete", "text": transcript, "source": "rawAudio"])
+        }
+      }
+
+      // Clean up audio file
+      self.cleanupRawAudioFile(url: url)
+
+      // If user still wants to be listening, restart appropriate STT method
+      if self.shouldBeListening {
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+          // If in broadcast mode, continue with raw audio recording
+          if self.useRawAudioSTT {
+            print("🎙️ [RawAudio] Restarting raw audio recording (broadcast mode)")
+            self.startRawAudioRecording()
+          } else if self.isAppInForeground {
+            // Otherwise restart normal speech recognition if in foreground
+            self.startFreshRecognition()
+          }
+        }
+      }
+    }
+  }
+
+  private func cleanupRawAudioFile(url: URL) {
+    do {
+      try FileManager.default.removeItem(at: url)
+      print("🎙️ [RawAudio] Cleaned up audio file")
+    } catch {
+      print("🎙️ [RawAudio] Failed to cleanup audio file: \(error.localizedDescription)")
+    }
+    rawAudioURL = nil
+  }
+
+  // MARK: - Broadcast Extension Audio Methods
+
+  private var broadcastAudioMonitorTimer: Timer?
+  private var lastProcessedSilenceTime: TimeInterval = 0
+
+  private func startBroadcastAudioMonitoring() {
+    print("🎙️ [BroadcastAudio] Starting to monitor for silence detection from extension")
+
+    // Check for silence detection flag every 500ms
+    broadcastAudioMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
+      guard let self = self else { return }
+      self.checkBroadcastSilenceDetection()
+    }
+  }
+
+  private func stopBroadcastAudioMonitoring() {
+    broadcastAudioMonitorTimer?.invalidate()
+    broadcastAudioMonitorTimer = nil
+  }
+
+  private func checkBroadcastSilenceDetection() {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+    userDefaults.synchronize()
+
+    let silenceDetected = userDefaults.bool(forKey: "silenceDetected")
+    let silenceTime = userDefaults.double(forKey: "silenceDetectedTime")
+
+    // Only process if this is a new silence detection
+    if silenceDetected && silenceTime > lastProcessedSilenceTime {
+      lastProcessedSilenceTime = silenceTime
+
+      // Clear the flag
+      userDefaults.set(false, forKey: "silenceDetected")
+      userDefaults.synchronize()
+
+      print("🎙️ [BroadcastAudio] Silence detected - aggregating and transcribing audio chunks")
+      aggregateAndTranscribeAudioChunks()
+    }
+  }
+
+  private func aggregateAndTranscribeAudioChunks() {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      print("🎙️ [BroadcastAudio] Could not access App Group container")
+      return
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path) else {
+      print("🎙️ [BroadcastAudio] No audio directory found")
+      return
+    }
+
+    // Get all PCM files, sorted by name (which includes timestamp)
+    let audioFiles = files.filter { $0.hasSuffix(".pcm") }.sorted()
+
+    if audioFiles.isEmpty {
+      print("🎙️ [BroadcastAudio] No audio chunks to process")
+      return
+    }
+
+    print("🎙️ [BroadcastAudio] Found \(audioFiles.count) audio chunks to aggregate")
+
+    // Aggregate all audio data
+    var aggregatedData = Data()
+    for filename in audioFiles {
+      let fileURL = audioDirectory.appendingPathComponent(filename)
+      if let chunkData = try? Data(contentsOf: fileURL) {
+        aggregatedData.append(chunkData)
+      }
+    }
+
+    guard !aggregatedData.isEmpty else {
+      print("🎙️ [BroadcastAudio] Aggregated data is empty")
+      clearBroadcastAudioChunks()
+      return
+    }
+
+    print("🎙️ [BroadcastAudio] Aggregated \(aggregatedData.count) bytes of audio data")
+
+    // Convert PCM to WAV and save to file for transcription
+    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+    let wavURL = documentsPath.appendingPathComponent("broadcast_audio_\(timestamp).wav")
+
+    // Write WAV file with header
+    if writeWAVFile(pcmData: aggregatedData, to: wavURL) {
+      print("🎙️ [BroadcastAudio] Written WAV file: \(wavURL.lastPathComponent)")
+
+      // Clear audio chunks after aggregation
+      clearBroadcastAudioChunks()
+
+      // Transcribe the audio
+      transcribeBroadcastAudio(url: wavURL)
+    } else {
+      print("🎙️ [BroadcastAudio] Failed to write WAV file")
+      clearBroadcastAudioChunks()
+    }
+  }
+
+  private func writeWAVFile(pcmData: Data, to url: URL) -> Bool {
+    // WAV header for 16-bit mono PCM at 44100 Hz
+    let sampleRate: UInt32 = 44100
+    let channels: UInt16 = 1
+    let bitsPerSample: UInt16 = 16
+
+    let dataSize = UInt32(pcmData.count)
+    let byteRate = sampleRate * UInt32(channels) * UInt32(bitsPerSample / 8)
+    let blockAlign = channels * (bitsPerSample / 8)
+
+    var header = Data()
+
+    // RIFF header
+    header.append(contentsOf: "RIFF".utf8)
+    var chunkSize = dataSize + 36
+    header.append(Data(bytes: &chunkSize, count: 4))
+    header.append(contentsOf: "WAVE".utf8)
+
+    // fmt subchunk
+    header.append(contentsOf: "fmt ".utf8)
+    var subchunk1Size: UInt32 = 16
+    header.append(Data(bytes: &subchunk1Size, count: 4))
+    var audioFormat: UInt16 = 1  // PCM
+    header.append(Data(bytes: &audioFormat, count: 2))
+    var numChannels = channels
+    header.append(Data(bytes: &numChannels, count: 2))
+    var sampleRateValue = sampleRate
+    header.append(Data(bytes: &sampleRateValue, count: 4))
+    var byteRateValue = byteRate
+    header.append(Data(bytes: &byteRateValue, count: 4))
+    var blockAlignValue = blockAlign
+    header.append(Data(bytes: &blockAlignValue, count: 2))
+    var bitsPerSampleValue = bitsPerSample
+    header.append(Data(bytes: &bitsPerSampleValue, count: 2))
+
+    // data subchunk
+    header.append(contentsOf: "data".utf8)
+    var dataSizeValue = dataSize
+    header.append(Data(bytes: &dataSizeValue, count: 4))
+
+    // Combine header and data
+    var wavData = header
+    wavData.append(pcmData)
+
+    do {
+      try wavData.write(to: url)
+      return true
+    } catch {
+      print("🎙️ [BroadcastAudio] Error writing WAV file: \(error)")
+      return false
+    }
+  }
+
+  private func clearBroadcastAudioChunks() {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      return
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path) else {
+      return
+    }
+
+    for filename in files.filter({ $0.hasSuffix(".pcm") }) {
+      let fileURL = audioDirectory.appendingPathComponent(filename)
+      try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    print("🎙️ [BroadcastAudio] Cleared audio chunks from shared container")
+  }
+
+  private func transcribeBroadcastAudio(url: URL) {
+    print("🎙️ [BroadcastAudio] Transcribing audio file: \(url.lastPathComponent)")
+
+    guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: currentLanguageCode)) else {
+      print("🎙️ [BroadcastAudio] Speech recognizer not available for \(currentLanguageCode)")
+      cleanupRawAudioFile(url: url)
+      return
+    }
+
+    guard recognizer.isAvailable else {
+      print("🎙️ [BroadcastAudio] Speech recognizer not available")
+      cleanupRawAudioFile(url: url)
+      return
+    }
+
+    let request = SFSpeechURLRecognitionRequest(url: url)
+    request.shouldReportPartialResults = false
+
+    recognizer.recognitionTask(with: request) { [weak self] result, error in
+      guard let self = self else { return }
+
+      if let error = error {
+        print("🎙️ [BroadcastAudio] Transcription error: \(error.localizedDescription)")
+        self.cleanupRawAudioFile(url: url)
+        return
+      }
+
+      guard let result = result, result.isFinal else { return }
+
+      let transcript = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
+
+      if transcript.isEmpty {
+        print("🎙️ [BroadcastAudio] Transcription was empty")
+      } else {
+        print("🎙️ [BroadcastAudio] Transcribed: \(transcript)")
+
+        // Send transcription to Flutter
+        if let sink = self.speechEventSink {
+          DispatchQueue.main.async {
+            sink(["event": "segmentComplete", "text": transcript, "source": "broadcastAudio"])
+          }
+        }
+      }
+
+      self.cleanupRawAudioFile(url: url)
+    }
   }
 
   // MARK: - Audio Interruption Handling
@@ -1524,6 +2079,16 @@ import Speech
   func onSpeechFinished(success: Bool) {
     ttsCompletionHandler?(success)
     ttsCompletionHandler = nil
+
+    // Clear audio chunks when TTS finishes so we only capture user's response
+    // This ensures we don't include old audio from before the agent spoke
+    if useRawAudioSTT && isBroadcastExtensionActive() {
+      print("🎙️ [BroadcastAudio] Clearing audio buffer after TTS finished")
+      clearBroadcastAudioChunks()
+
+      // Also reset the silence time tracker to avoid processing stale detections
+      lastProcessedSilenceTime = Date().timeIntervalSince1970
+    }
   }
 
   // Send TTS audio level to Flutter

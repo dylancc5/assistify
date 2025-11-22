@@ -158,6 +158,10 @@
   "@micOff": {
     "description": "Microphone button label when mic is off"
   },
+  "micNone": "Mic: None",
+  "@micNone": {
+    "description": "Microphone button label when chat is not active"
+  },
   "shareScreen": "Share Screen",
   "@shareScreen": {
     "description": "Share screen button label"
@@ -623,6 +627,15 @@
   "feedbackSent": "Thank you for your feedback!",
   "@feedbackSent": {
     "description": "Feedback sent confirmation"
+  },
+  "tapToViewMessages": "Tap to view {count} messages",
+  "@tapToViewMessages": {
+    "description": "Hint text showing message count in history card",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
   }
 }
 

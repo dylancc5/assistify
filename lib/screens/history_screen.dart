@@ -209,13 +209,32 @@ class HistoryScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Date/Time
-              Text(
-                _getLocalizedDateTime(context, conversation),
-                style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
+              // Date/Time and Duration row
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    _getLocalizedDateTime(context, conversation),
+                    style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
+                  ),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.access_time,
+                        size: 14,
+                        color: colors.textSecondary,
+                      ),
+                      const SizedBox(width: AppDimensions.xs),
+                      Text(
+                        _getLocalizedDuration(context, conversation),
+                        style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
+                      ),
+                    ],
+                  ),
+                ],
               ),
 
-              const SizedBox(height: AppDimensions.sm),
+              SizedBox(height: AppDimensions.sm * 1.5),
 
               // Preview Text
               Text(
@@ -225,22 +244,16 @@ class HistoryScreen extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
               ),
 
-              const SizedBox(height: AppDimensions.sm),
+              SizedBox(height: AppDimensions.sm * 1.5),
 
-              // Duration
-              Row(
-                children: [
-                  Icon(
-                    Icons.access_time,
-                    size: 16,
-                    color: colors.textSecondary,
-                  ),
-                  const SizedBox(width: AppDimensions.xs),
-                  Text(
-                    _getLocalizedDuration(context, conversation),
-                    style: AppTextStyles.caption.copyWith(color: colors.textSecondary),
-                  ),
-                ],
+              // Tap to view message count
+              Text(
+                LocalizationHelper.of(context).tapToViewMessages(conversation.messages.length),
+                style: AppTextStyles.caption.copyWith(
+                  color: colors.primaryBlue,
+                  fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
             ],
           ),

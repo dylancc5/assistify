@@ -320,6 +320,12 @@ abstract class AppLocalizations {
   /// **'Mic: OFF'**
   String get micOff;
 
+  /// Microphone button label when chat is not active
+  ///
+  /// In en, this message translates to:
+  /// **'Mic: None'**
+  String get micNone;
+
   /// Share screen button label
   ///
   /// In en, this message translates to:
@@ -1045,6 +1051,12 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Thank you for your feedback!'**
   String get feedbackSent;
+
+  /// Hint text showing message count in history card
+  ///
+  /// In en, this message translates to:
+  /// **'Tap to view {count} messages'**
+  String tapToViewMessages(int count);
 }
 
 class _AppLocalizationsDelegate

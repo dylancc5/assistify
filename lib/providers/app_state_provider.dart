@@ -94,7 +94,17 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
        _speechService = speechService ?? SpeechService(),
        _geminiService = geminiService ?? GeminiService(),
        _ttsService = ttsService ?? TTSService(),
-       _screenStreamService = screenStreamService ?? ScreenStreamService();
+       _screenStreamService = screenStreamService ?? ScreenStreamService() {
+    // Set up callback for when broadcast stops externally
+    _screenStreamService.onBroadcastStopped = _onBroadcastStopped;
+  }
+
+  /// Called when broadcast extension stops externally (e.g., from Control Center)
+  void _onBroadcastStopped() {
+    debugPrint('📺 [AppState] Broadcast stopped externally, updating UI state');
+    _isScreenRecordingActive = false;
+    notifyListeners();
+  }
 
   // Getters
   PermissionState get screenRecordingPermission => _screenRecordingPermission;
