@@ -17,12 +17,16 @@ import Speech
   private var outputURL: URL?
   private var recordingStartTime: Date?
 
+  // App Group identifier for broadcast extension communication
+  private let appGroupIdentifier = "group.com.dylancc5.assistify.broadcast"
+
   // Screen capture frame buffer properties
   private var frameBuffer: [Data] = []
   private var frameBufferLock = NSLock()
   private var lastFrameCaptureTime: Date?
   private var isCapturingFrames: Bool = false
   private let frameCaptureInterval: TimeInterval = 0.5  // 500ms between frames
+  private var isUsingBroadcastExtension: Bool = false
 
   // Speech recognition properties
   private var speechRecognizer: SFSpeechRecognizer?
@@ -31,6 +35,16 @@ import Speech
   private var audioEngine: AVAudioEngine?
   private var currentTranscript: String = ""
   private var isListening: Bool = false
+  private var shouldBeListening: Bool = false  // Track if user wants to be listening
+
+  // Background audio recording properties
+  private var isAppInForeground: Bool = true
+  private var isRecordingRawAudio: Bool = false
+  private var audioRecorder: AVAudioRecorder?
+  private var rawAudioURL: URL?
+  private var rawAudioSilenceTimer: Timer?
+  private var lastAudioLevel: Float = 0.0
+  private let rawAudioSilenceThreshold: TimeInterval = 1.5
 
   // Silence detection properties
   private var silenceTimer: Timer?
@@ -63,6 +77,16 @@ import Speech
 
     screenRecorder = RPScreenRecorder.shared()
 
+    // Set up broadcast extension monitoring
+    setupBroadcastExtensionMonitoring()
+    
+    // Check if broadcast extension is already active on app launch
+    if isBroadcastExtensionActive() {
+      print("[AppDelegate] Broadcast extension is already active on app launch")
+      isUsingBroadcastExtension = true
+      isCapturingFrames = true
+    }
+
     methodChannel?.setMethodCallHandler { [weak self] (call, result) in
       guard let self = self else { return }
 
@@ -84,7 +108,9 @@ import Speech
       case "stopFrameCapture":
         self.stopFrameCapture(result: result)
       case "isCapturing":
-        result(self.isCapturingFrames)
+        // Check both broadcast extension and in-app recording
+        let isBroadcasting = self.isBroadcastExtensionActive()
+        result(self.isCapturingFrames || isBroadcasting)
       case "sampleScreenshots":
         let maxSamples = (call.arguments as? [String: Any])?["maxSamples"] as? Int ?? 10
         self.sampleScreenshots(maxSamples: maxSamples, result: result)
@@ -270,7 +296,7 @@ import Speech
       case .video:
         // Set up video input if needed
         if self.videoInput == nil {
-          let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer)!
+          guard let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer) else { return }
           let dimensions = CMVideoFormatDescriptionGetDimensions(formatDescription)
 
           let videoSettings: [String: Any] = [
@@ -300,7 +326,7 @@ import Speech
       case .audioApp, .audioMic:
         // Set up audio input if needed
         if self.audioInput == nil {
-          let formatDescription = CMSampleBufferGetFormatDescription(sampleBuffer)!
+          guard CMSampleBufferGetFormatDescription(sampleBuffer) != nil else { return }
 
           let audioSettings: [String: Any] = [
             AVFormatIDKey: kAudioFormatMPEG4AAC,
@@ -420,7 +446,7 @@ import Speech
 
   private func showBroadcastPicker(result: @escaping FlutterResult) {
     DispatchQueue.main.async { [weak self] in
-      guard let controller = self?.window?.rootViewController else {
+      guard let rootVC = self?.window?.rootViewController else {
         result(FlutterError(code: "NO_VIEW_CONTROLLER",
                            message: "Could not get root view controller",
                            details: nil))
@@ -428,16 +454,26 @@ import Speech
       }
 
       // Create broadcast picker view
-      let broadcastPicker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 50, height: 50))
-      broadcastPicker.preferredExtension = "com.assistify.app.BroadcastExtension"
-      broadcastPicker.showsMicrophoneButton = true
+      let broadcastPicker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 60, height: 60))
+      // Don't set preferredExtension to allow user to choose from list
+      // broadcastPicker.preferredExtension = "com.dylancc5.assistify.Asstify-Screenshare"
+      broadcastPicker.showsMicrophoneButton = false
 
-      // Find the button in the picker and trigger it
+      // Add to view hierarchy temporarily so it can present the picker
+      broadcastPicker.alpha = 0
+      rootVC.view.addSubview(broadcastPicker)
+
+      // Find and tap the button to show the picker
       for subview in broadcastPicker.subviews {
         if let button = subview as? UIButton {
-          button.sendActions(for: .allTouchEvents)
+          button.sendActions(for: .touchUpInside)
           break
         }
+      }
+
+      // Remove after a delay
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        broadcastPicker.removeFromSuperview()
       }
 
       result(true)
@@ -446,14 +482,74 @@ import Speech
 
   private func checkBroadcastStatus(result: @escaping FlutterResult) {
     // Check if broadcast extension is currently active via App Group
-    let userDefaults = UserDefaults(suiteName: "group.com.assistify.broadcast")
-    let isBroadcasting = userDefaults?.bool(forKey: "isBroadcasting") ?? false
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      result(false)
+      return
+    }
+    let isBroadcasting = userDefaults.bool(forKey: "isBroadcasting")
     result(isBroadcasting)
   }
 
   // MARK: - Frame Capture Methods
 
   private func startFrameCapture(result: @escaping FlutterResult) {
+    // First, check if broadcast extension is already active (user started it manually)
+    if isBroadcastExtensionActive() {
+      print("📺 [ScreenCapture] Using BROADCAST EXTENSION - system-wide screen recording active")
+      isUsingBroadcastExtension = true
+      isCapturingFrames = true
+
+      // Reconfigure audio session to ensure speech recognition continues working
+      reconfigureAudioSessionForSpeech()
+
+      result(true)
+      return
+    }
+
+    // Broadcast extension not active - show the picker for user to start it
+    print("📺 [ScreenCapture] Broadcast extension not active - showing picker for user to start it")
+    isUsingBroadcastExtension = false
+    isCapturingFrames = false
+
+    // Show the broadcast picker
+    DispatchQueue.main.async { [weak self] in
+      guard let rootVC = self?.window?.rootViewController else {
+        result(false)
+        return
+      }
+
+      // Create broadcast picker view
+      let broadcastPicker = RPSystemBroadcastPickerView(frame: CGRect(x: 0, y: 0, width: 60, height: 60))
+      broadcastPicker.showsMicrophoneButton = false
+
+      // Add to view hierarchy temporarily so it can present the picker
+      broadcastPicker.alpha = 0
+      rootVC.view.addSubview(broadcastPicker)
+
+      // Find and tap the button to show the picker
+      for subview in broadcastPicker.subviews {
+        if let button = subview as? UIButton {
+          button.sendActions(for: .touchUpInside)
+          break
+        }
+      }
+
+      // Remove after a delay
+      DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+        broadcastPicker.removeFromSuperview()
+      }
+
+      // Return false since broadcast isn't active yet - user needs to select it
+      result(false)
+    }
+    return
+
+    // FALLBACK CODE - kept for future use but disabled
+    /*
+    // Fallback to in-app recording
+    print("📱 [ScreenCapture] Using IN-APP RECORDING (fallback) - only captures this app")
+    isUsingBroadcastExtension = false
+
     guard let recorder = screenRecorder else {
       result(FlutterError(code: "RECORDER_UNAVAILABLE",
                          message: "Screen recorder is not available",
@@ -535,9 +631,37 @@ import Speech
         result(true)
       }
     }
+    */
   }
 
   private func stopFrameCapture(result: @escaping FlutterResult) {
+    // Check if broadcast extension is active
+    let isBroadcasting = isBroadcastExtensionActive()
+
+    if isUsingBroadcastExtension || isBroadcasting {
+      // For broadcast extension, update flags and clear buffer
+      // Note: The broadcast extension itself cannot be stopped programmatically
+      // User must stop it via Control Center, but we'll stop using its frames
+      print("📺 [ScreenCapture] Stopping broadcast extension frame capture")
+
+      // Clear our tracking flags
+      isUsingBroadcastExtension = false
+      isCapturingFrames = false
+
+      // Clear the shared container frames
+      clearSharedContainerFrames()
+
+      // Note: The broadcast will continue running until user stops it via Control Center
+      // but we will no longer use the frames
+      if isBroadcasting {
+        print("📺 [ScreenCapture] Note: Broadcast extension is still running. Stop it via Control Center if needed.")
+      }
+
+      result(true)
+      return
+    }
+
+    // Fallback: stop in-app recording
     guard let recorder = screenRecorder else {
       result(FlutterError(code: "RECORDER_UNAVAILABLE",
                          message: "Screen recorder is not available",
@@ -563,6 +687,17 @@ import Speech
   }
 
   private func sampleScreenshots(maxSamples: Int, result: @escaping FlutterResult) {
+    // Check if we're using broadcast extension
+    if isUsingBroadcastExtension && isBroadcastExtensionActive() {
+      let frames = readFramesFromSharedContainer(maxSamples: maxSamples)
+      print("📺 [ScreenCapture] Sampled \(frames.count) frames from BROADCAST EXTENSION")
+      let flutterData = frames.map { FlutterStandardTypedData(bytes: $0) }
+      result(flutterData as [Any])
+      return
+    }
+
+    // Fallback: use in-memory buffer
+    print("📱 [ScreenCapture] Sampling from IN-APP buffer")
     frameBufferLock.lock()
     let bufferCount = frameBuffer.count
 
@@ -595,10 +730,173 @@ import Speech
   }
 
   private func clearFrameBuffer(result: @escaping FlutterResult) {
+    // Clear broadcast extension frames if active
+    if isUsingBroadcastExtension && isBroadcastExtensionActive() {
+      clearSharedContainerFrames()
+    }
+    
+    // Clear in-memory buffer
     frameBufferLock.lock()
     frameBuffer.removeAll()
     frameBufferLock.unlock()
     result(true)
+  }
+
+  // MARK: - Broadcast Extension Helper Methods
+
+  private func isBroadcastExtensionActive() -> Bool {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      print("📺 [ScreenCapture] ERROR: Could not access App Group UserDefaults")
+      return false
+    }
+    userDefaults.synchronize() // Force sync to get latest value
+    return userDefaults.bool(forKey: "isBroadcasting")
+  }
+
+  private func readFramesFromSharedContainer(maxSamples: Int) -> [Data] {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      print("[AppDelegate] ERROR: Could not access App Group container")
+      return []
+    }
+
+    let framesDirectory = containerURL.appendingPathComponent("frames", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: framesDirectory.path) else {
+      return []
+    }
+
+    // Filter and sort frame files by name (which includes timestamp)
+    let frameFiles = files.filter { $0.hasSuffix(".jpg") }.sorted()
+
+    if frameFiles.isEmpty {
+      return []
+    }
+
+    // Calculate evenly distributed indices
+    var indices: [Int] = []
+    if frameFiles.count <= maxSamples {
+      // Return all frames if we have fewer than maxSamples
+      indices = Array(0..<frameFiles.count)
+    } else {
+      // Select evenly distributed frames
+      for i in 0..<maxSamples {
+        let index = (i * frameFiles.count) / maxSamples
+        indices.append(index)
+      }
+    }
+
+    // Read the sampled frames
+    var frames: [Data] = []
+    for index in indices {
+      let filename = frameFiles[index]
+      let fileURL = framesDirectory.appendingPathComponent(filename)
+      if let data = try? Data(contentsOf: fileURL) {
+        frames.append(data)
+      }
+    }
+
+    // Clean up sampled frames from shared container
+    for index in indices {
+      let filename = frameFiles[index]
+      let fileURL = framesDirectory.appendingPathComponent(filename)
+      try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    // Update frame count in UserDefaults
+    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+      let remainingCount = frameFiles.count - indices.count
+      userDefaults.set(remainingCount, forKey: "frameCount")
+      userDefaults.synchronize()
+    }
+
+    return frames
+  }
+
+  private func clearSharedContainerFrames() {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      return
+    }
+
+    let framesDirectory = containerURL.appendingPathComponent("frames", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: framesDirectory.path) else {
+      return
+    }
+
+    // Delete all frame files
+    for filename in files.filter({ $0.hasSuffix(".jpg") }) {
+      let fileURL = framesDirectory.appendingPathComponent(filename)
+      try? FileManager.default.removeItem(at: fileURL)
+    }
+
+    // Update frame count in UserDefaults
+    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+      userDefaults.set(0, forKey: "frameCount")
+      userDefaults.synchronize()
+    }
+  }
+
+  private func setupBroadcastExtensionMonitoring() {
+    // Monitor broadcast extension status periodically
+    // Check every 1 second if broadcast status has changed
+    Timer.scheduledTimer(withTimeInterval: 1.0, repeats: true) { [weak self] _ in
+      guard let self = self else { return }
+
+      let wasBroadcasting = self.isUsingBroadcastExtension
+      let isNowBroadcasting = self.isBroadcastExtensionActive()
+
+      // Debug log to see what's happening
+      if isNowBroadcasting != wasBroadcasting {
+        print("📺 [ScreenCapture] Status change detected: was=\(wasBroadcasting), now=\(isNowBroadcasting)")
+      }
+
+      // If broadcast extension stopped while we were using it
+      if wasBroadcasting && !isNowBroadcasting {
+        print("📺 [ScreenCapture] Broadcast extension stopped")
+        self.isUsingBroadcastExtension = false
+        self.isCapturingFrames = false
+      } else if !wasBroadcasting && isNowBroadcasting {
+        // Broadcast extension just started
+        print("📺 [ScreenCapture] Broadcast extension started - switching to SYSTEM-WIDE capture")
+        self.isUsingBroadcastExtension = true
+        self.isCapturingFrames = true
+
+        // Reconfigure audio session and restart speech recognition after a delay
+        // to allow the broadcast extension to fully initialize
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) { [weak self] in
+          guard let self = self else { return }
+
+          // Reconfigure audio session to ensure speech recognition continues working
+          self.reconfigureAudioSessionForSpeech()
+
+          // If we were listening before, restart speech recognition
+          if self.shouldBeListening && !self.isListening {
+            print("🎤 [Speech] Restarting speech recognition after broadcast started...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
+              self.startFreshRecognition()
+            }
+          }
+        }
+      }
+    }
+  }
+
+  /// Reconfigure audio session to work alongside broadcast extension
+  private func reconfigureAudioSessionForSpeech() {
+    // Run on background thread to avoid blocking main thread
+    DispatchQueue.global(qos: .userInitiated).async {
+      do {
+        let audioSession = AVAudioSession.sharedInstance()
+
+        // Don't deactivate - just reconfigure with mixWithOthers to allow concurrent audio
+        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+        try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
+
+        print("🎤 [Audio] Audio session reconfigured for speech recognition")
+      } catch {
+        print("🎤 [Audio] Error reconfiguring audio session: \(error.localizedDescription)")
+      }
+    }
   }
 
   // MARK: - Speech Recognition Methods
@@ -652,12 +950,15 @@ import Speech
       return
     }
 
-    guard let engine = audioEngine else {
+    guard audioEngine != nil else {
       result(FlutterError(code: "AUDIO_ENGINE_ERROR",
                          message: "Audio engine is not available",
                          details: nil))
       return
     }
+
+    // Mark that user wants to be listening
+    shouldBeListening = true
 
     // If already listening, stop first to restart with new language
     if isListening {
@@ -668,7 +969,7 @@ import Speech
       recognitionRequest = nil
       isListening = false
     }
-    
+
     // Update speech recognizer with new language
     speechRecognizer = recognizer
 
@@ -680,14 +981,14 @@ import Speech
       try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
 
       // Use playAndRecord to allow both TTS and speech recognition
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       // Retry once after a brief delay
       DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
         do {
           let audioSession = AVAudioSession.sharedInstance()
-          try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+          try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
           try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
           // Continue with recognition setup after retry
           self?.continueRecognitionSetup(languageCode: languageCode, result: result)
@@ -750,10 +1051,29 @@ import Speech
         // If there's an error, stop the audio engine
         self.stopAudioEngine()
 
-        // Notify Flutter that recognition stopped so it can restart
-        if let sink = self.speechEventSink {
-          DispatchQueue.main.async {
-            sink(["event": "recognitionStopped", "error": error.localizedDescription])
+        let errorCode = (error as NSError).code
+        // Error codes: 203 = no speech detected (normal end), 216 = cancelled, 1110 = audio engine error
+
+        // Only log and retry for actual errors, not normal endings
+        if errorCode != 203 && errorCode != 216 {
+          print("🎤 [Speech] Recognition error: \(error.localizedDescription)")
+
+          // Notify Flutter that recognition stopped so it can restart
+          if let sink = self.speechEventSink {
+            DispatchQueue.main.async {
+              sink(["event": "recognitionStopped", "error": error.localizedDescription])
+            }
+          }
+
+          // Auto-retry after 500ms for audio errors (not cancellation or normal end)
+          // Only retry if user still wants to be listening
+          if self.shouldBeListening {
+            print("🎤 [Speech] Will auto-retry in 500ms...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+              guard let self = self, !self.isListening, self.shouldBeListening else { return }
+              print("🎤 [Speech] Auto-retrying speech recognition...")
+              self.startFreshRecognition()
+            }
           }
         }
       }
@@ -790,6 +1110,9 @@ import Speech
   }
 
   private func stopSpeechRecognition(result: @escaping FlutterResult) {
+    // Mark that user no longer wants to be listening
+    shouldBeListening = false
+
     // First, finalize the current recognition task to get the final transcription
     recognitionRequest?.endAudio()
 
@@ -813,6 +1136,9 @@ import Speech
   }
 
   private func endChat(result: @escaping FlutterResult) {
+    // Mark that user no longer wants to be listening
+    shouldBeListening = false
+
     // First, finalize the current recognition task to get the final transcription
     recognitionRequest?.endAudio()
 
@@ -966,7 +1292,7 @@ import Speech
       try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
 
       // Use playAndRecord to allow both TTS and speech recognition
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       print("Audio session error during restart: \(error.localizedDescription)")
@@ -1024,13 +1350,25 @@ import Speech
       engine.prepare()
       try engine.start()
       isListening = true
+      print("🎤 [Speech] Recognition started successfully")
     } catch {
       isListening = false
+      print("🎤 [Speech] Failed to start audio engine: \(error.localizedDescription)")
 
       // Notify Flutter that recognition stopped unexpectedly
       if let sink = speechEventSink {
         DispatchQueue.main.async {
           sink(["event": "recognitionStopped", "error": error.localizedDescription])
+        }
+      }
+
+      // Auto-retry after 500ms only if user still wants to be listening
+      if shouldBeListening {
+        print("🎤 [Speech] Will auto-retry in 500ms...")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [weak self] in
+          guard let self = self, !self.isListening, self.shouldBeListening else { return }
+          print("🎤 [Speech] Auto-retrying speech recognition...")
+          self.startFreshRecognition()
         }
       }
     }
@@ -1112,7 +1450,7 @@ import Speech
     do {
       let audioSession = AVAudioSession.sharedInstance()
       // Use playAndRecord to allow both TTS and speech recognition
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetooth])
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
       try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
     } catch {
       print("TTS audio session error: \(error.localizedDescription)")

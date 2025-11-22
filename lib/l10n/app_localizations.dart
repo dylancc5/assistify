@@ -308,6 +308,18 @@ abstract class AppLocalizations {
   /// **'Microphone'**
   String get microphone;
 
+  /// Microphone button label when mic is on
+  ///
+  /// In en, this message translates to:
+  /// **'Mic: ON'**
+  String get micOn;
+
+  /// Microphone button label when mic is off
+  ///
+  /// In en, this message translates to:
+  /// **'Mic: OFF'**
+  String get micOff;
+
   /// Share screen button label
   ///
   /// In en, this message translates to:

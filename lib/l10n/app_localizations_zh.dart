@@ -119,6 +119,12 @@ class AppLocalizationsZh extends AppLocalizations {
   String get microphone => '麦克风';
 
   @override
+  String get micOn => '麦克风：开';
+
+  @override
+  String get micOff => '麦克风：关';
+
+  @override
   String get shareScreen => '共享屏幕';
 
   @override

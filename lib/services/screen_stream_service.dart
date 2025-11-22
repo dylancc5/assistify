@@ -11,6 +11,7 @@ class ScreenStreamService {
   bool _isCapturing = false;
 
   /// Check if currently capturing frames
+  /// Note: This only reflects the local flag. Use refreshCaptureStatus() to sync with native.
   bool get isCapturing => _isCapturing;
 
   /// Check if screen capture is available on this device
@@ -24,6 +25,29 @@ class ScreenStreamService {
       return available;
     } catch (e) {
       debugPrint('Error checking capture availability: $e');
+      return false;
+    }
+  }
+
+  /// Show system broadcast picker for user to start system-wide screen recording
+  Future<bool> showBroadcastPicker() async {
+    try {
+      final bool success = await platform.invokeMethod('showBroadcastPicker');
+      debugPrint('📺 [ScreenCapture] Broadcast picker shown: $success');
+      return success;
+    } catch (e) {
+      debugPrint('Error showing broadcast picker: $e');
+      return false;
+    }
+  }
+
+  /// Check if broadcast extension is currently active
+  Future<bool> isBroadcasting() async {
+    try {
+      final bool broadcasting = await platform.invokeMethod('isBroadcasting');
+      return broadcasting;
+    } catch (e) {
+      debugPrint('Error checking broadcast status: $e');
       return false;
     }
   }
@@ -44,14 +68,24 @@ class ScreenStreamService {
         return false;
       }
 
-      // Start frame capture via platform channel
-      final bool success = await platform.invokeMethod('startFrameCapture');
+      // Check if broadcast extension is already running
+      final bool alreadyBroadcasting = await isBroadcasting();
 
-      if (success) {
+      if (alreadyBroadcasting) {
+        // Broadcast already active, just mark as capturing
+        debugPrint('📺 [ScreenCapture] Broadcast extension already active');
         _isCapturing = true;
+        return true;
       }
 
-      return success;
+      // Call startFrameCapture which will show the broadcast picker
+      // It returns false because user needs to select the broadcast extension
+      await platform.invokeMethod('startFrameCapture');
+
+      // Return true to indicate picker was shown - the app should check isBroadcasting()
+      // periodically to see when user actually starts it
+      debugPrint('📺 [ScreenCapture] Broadcast picker shown - waiting for user to start broadcast');
+      return true;
     } on PlatformException catch (e) {
       debugPrint('Platform error starting capture: ${e.code} - ${e.message}');
       return false;
@@ -64,7 +98,10 @@ class ScreenStreamService {
   /// Stop capturing screen frames
   Future<bool> stopCapture() async {
     try {
-      if (!_isCapturing) {
+      // Check actual broadcast status from native, not just local flag
+      final bool isBroadcastingNow = await isBroadcasting();
+
+      if (!_isCapturing && !isBroadcastingNow) {
         debugPrint('Frame capture is not active');
         return true;
       }
@@ -111,6 +148,14 @@ class ScreenStreamService {
         }
         return Uint8List(0);
       }).where((data) => data.isNotEmpty).toList();
+
+      // Log which mode provided the frames
+      final bool isBroadcasting = await platform.invokeMethod('isBroadcasting');
+      if (isBroadcasting) {
+        debugPrint('📺 [ScreenCapture] Sampled ${screenshots.length} frames from BROADCAST EXTENSION');
+      } else {
+        debugPrint('📱 [ScreenCapture] Sampled ${screenshots.length} frames from IN-APP buffer');
+      }
 
       // Clear buffer after sampling
       await clearBuffer();

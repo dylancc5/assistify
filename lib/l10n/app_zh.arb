@@ -49,6 +49,8 @@
   "startChat": "开始对话",
   "endChat": "结束对话",
   "microphone": "麦克风",
+  "micOn": "麦克风：开",
+  "micOff": "麦克风：关",
   "shareScreen": "共享屏幕",
   "assistifyNeedsToSeeYourScreen": "Assistify 需要查看您的屏幕",
   "thisHelpsMeUnderstandWhatYouAreLookingAt": "这有助于我了解您正在查看的内容并提供更好的帮助",

@@ -150,6 +150,14 @@
   "@microphone": {
     "description": "Microphone button label"
   },
+  "micOn": "Mic: ON",
+  "@micOn": {
+    "description": "Microphone button label when mic is on"
+  },
+  "micOff": "Mic: OFF",
+  "@micOff": {
+    "description": "Microphone button label when mic is off"
+  },
   "shareScreen": "Share Screen",
   "@shareScreen": {
     "description": "Share screen button label"

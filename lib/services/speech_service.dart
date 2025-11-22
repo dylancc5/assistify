@@ -76,9 +76,12 @@ class SpeechService {
       final result = await _methodChannel.invokeMethod<bool>('startListening', {
         'languageCode': langCode,
       });
+      if (result == true) {
+        debugPrint('🎤 [Speech] Recognition started successfully');
+      }
       return result ?? false;
     } catch (e) {
-      debugPrint('Error starting speech recognition: $e');
+      debugPrint('🎤 [Speech] Error starting speech recognition: $e');
       return false;
     }
   }

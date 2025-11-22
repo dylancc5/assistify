@@ -473,7 +473,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 // Start/End Chat Button
                 ControlButton(
                   icon: appState.isChatActive
-                      ? Icons.stop_circle_outlined
+                      ? Icons.close
                       : Icons.chat_bubble_outline,
                   label: appState.isChatActive ? l10n.endChat : l10n.startChat,
                   backgroundColor: appState.isChatActive
@@ -495,7 +495,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 // Microphone Mute Button
                 ControlButton(
                   icon: appState.isMicrophoneMuted ? Icons.mic_off : Icons.mic,
-                  label: l10n.microphone,
+                  label: appState.isMicrophoneMuted ? l10n.micOff : l10n.micOn,
                   backgroundColor: appState.isMicrophoneMuted
                       ? colors.accentCoral
                       : colors.primaryBlue,
@@ -509,8 +509,8 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
                 // Screen Recording Button (only enabled when chat is active)
                 ControlButton(
                   icon: appState.isScreenRecordingActive
-                      ? Icons.videocam
-                      : Icons.videocam_outlined,
+                      ? Icons.stop_screen_share
+                      : Icons.screen_share,
                   label: l10n.shareScreen,
                   backgroundColor: appState.isScreenRecordingActive
                       ? colors.successGreen

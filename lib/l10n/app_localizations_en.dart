@@ -127,6 +127,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get microphone => 'Microphone';
 
   @override
+  String get micOn => 'Mic: ON';
+
+  @override
+  String get micOff => 'Mic: OFF';
+
+  @override
   String get shareScreen => 'Share Screen';
 
   @override
