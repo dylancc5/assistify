@@ -1,0 +1,288 @@
+{
+  "version": "1.0",
+  "description": "Benchmark test cases for Assistify AI response quality and screen understanding",
+  "test_cases": [
+    {
+      "id": "comm_001",
+      "category": "Communication",
+      "query": "How do I send a photo to my daughter?",
+      "screen_context": "iOS Messages app is open. A conversation with 'Sarah' is visible. At the bottom is a text input field with a blue circular send button on the right. To the left of the text input field is a camera icon.",
+      "evaluation_criteria": {
+        "must_include": [
+          "camera icon",
+          "tap",
+          "photo"
+        ],
+        "must_not_include": [
+          "markdown",
+          "bullet points",
+          "**"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "comm_002",
+      "category": "Communication",
+      "query": "I want to video call my grandson.",
+      "screen_context": "iOS Contacts app showing contact details for 'Michael Chen'. Phone number is visible. Below are buttons including a FaceTime video call button with a camera icon.",
+      "evaluation_criteria": {
+        "must_include": [
+          "FaceTime",
+          "video",
+          "button"
+        ],
+        "must_not_include": [
+          "markdown",
+          "1.",
+          "2."
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "comm_003",
+      "category": "Communication",
+      "query": "What does LOL mean in this message?",
+      "screen_context": "Messages app showing a text from granddaughter: 'That's so funny LOL! Can't wait to see you!'",
+      "evaluation_criteria": {
+        "must_include": [
+          "laugh",
+          "funny"
+        ],
+        "must_not_include": [
+          "abbreviation",
+          "stands for"
+        ],
+        "should_reference_screen": false,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "comm_004",
+      "category": "Communication",
+      "query": "How do I reply to this message?",
+      "screen_context": "Messages app showing a received text message. At the bottom is a text input field that says 'iMessage'. The keyboard is not visible.",
+      "evaluation_criteria": {
+        "must_include": [
+          "tap",
+          "text field",
+          "type"
+        ],
+        "must_not_include": [
+          "markdown",
+          "step 1"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "nav_001",
+      "category": "Navigation",
+      "query": "Where can I find my Wi-Fi settings?",
+      "screen_context": "iOS Home screen is visible with various app icons. The Settings app (gray gear icon) is visible in the bottom left area.",
+      "evaluation_criteria": {
+        "must_include": [
+          "Settings",
+          "Wi-Fi"
+        ],
+        "must_not_include": [
+          "markdown",
+          "**"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "nav_002",
+      "category": "Navigation",
+      "query": "What does this gear icon do?",
+      "screen_context": "iOS Home screen with the Settings app icon (gray gear) highlighted. Other apps are visible around it.",
+      "evaluation_criteria": {
+        "must_include": [
+          "Settings",
+          "adjust",
+          "phone"
+        ],
+        "must_not_include": [
+          "markdown"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "nav_003",
+      "category": "Navigation",
+      "query": "How do I go back to the previous screen?",
+      "screen_context": "Inside an app with a navigation bar at the top. In the top-left corner is a blue back arrow with the text 'Back' next to it.",
+      "evaluation_criteria": {
+        "must_include": [
+          "back",
+          "arrow",
+          "top"
+        ],
+        "must_not_include": [
+          "markdown",
+          "**"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "safety_001",
+      "category": "Safety",
+      "query": "Should I click this link?",
+      "screen_context": "Messages app showing a text from unknown number: 'Your bank account has been locked! Click here immediately to verify: http://secure-bank-verify.xyz/urgent'",
+      "evaluation_criteria": {
+        "must_include": [
+          "scam",
+          "suspicious",
+          "not click"
+        ],
+        "must_not_include": [
+          "markdown",
+          "might be"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "safety_002",
+      "category": "Safety",
+      "query": "Is this message from my bank?",
+      "screen_context": "Text message from 'BankAlert' saying: 'Congratulations! You have won $5000. Send your SSN and PIN to claim prize.'",
+      "evaluation_criteria": {
+        "must_include": [
+          "scam",
+          "not",
+          "never"
+        ],
+        "must_not_include": [
+          "markdown"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "safety_003",
+      "category": "Safety",
+      "query": "What should I do with this message?",
+      "screen_context": "Message from unknown sender: 'Hi grandma, this is your grandson. My phone broke. Can you send money to this Cash App: $notascam123'",
+      "evaluation_criteria": {
+        "must_include": [
+          "scam",
+          "verify",
+          "call"
+        ],
+        "must_not_include": [
+          "markdown"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "task_001",
+      "category": "Task Guidance",
+      "query": "How do I check my bank balance?",
+      "screen_context": "Phone home screen is visible. A banking app icon labeled 'Chase Mobile' is visible among other apps.",
+      "evaluation_criteria": {
+        "must_include": [
+          "app",
+          "open",
+          "balance"
+        ],
+        "must_not_include": [
+          "1.",
+          "2.",
+          "markdown"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "task_002",
+      "category": "Task Guidance",
+      "query": "Help me make the text bigger, I can't read it well.",
+      "screen_context": "iOS Home screen is visible with regular-sized app icons and labels.",
+      "evaluation_criteria": {
+        "must_include": [
+          "Settings",
+          "Display",
+          "text size"
+        ],
+        "must_not_include": [
+          "markdown",
+          "**"
+        ],
+        "should_reference_screen": false,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "task_003",
+      "category": "Task Guidance",
+      "query": "How do I turn off this app?",
+      "screen_context": "Currently inside the Music app with a song playing. The home button or gesture area is visible at the bottom of the screen.",
+      "evaluation_criteria": {
+        "must_include": [
+          "swipe",
+          "home"
+        ],
+        "must_not_include": [
+          "force quit",
+          "close completely",
+          "markdown"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "screen_001",
+      "category": "Screen Understanding",
+      "query": "What app am I looking at right now?",
+      "screen_context": "The screen shows a grid of app icons on a light background. At the top is '9:41 AM' and signal indicators. At the bottom is a dock with Phone, Safari, Messages, and Music apps. This is the standard iOS home screen layout.",
+      "evaluation_criteria": {
+        "must_include": [
+          "Home screen",
+          "apps"
+        ],
+        "must_not_include": [
+          "markdown",
+          "inside an app"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    },
+    {
+      "id": "screen_002",
+      "category": "Screen Understanding",
+      "query": "Can you see what number is calling me?",
+      "screen_context": "Full screen incoming call interface. Large text at top says 'Unknown Caller'. Below are two buttons: a red decline button on the left and a green accept button on the right. The phone is ringing.",
+      "evaluation_criteria": {
+        "must_include": [
+          "Unknown",
+          "number",
+          "not"
+        ],
+        "must_not_include": [
+          "markdown",
+          "yes"
+        ],
+        "should_reference_screen": true,
+        "max_sentences": 5
+      }
+    }
+  ]
+}
