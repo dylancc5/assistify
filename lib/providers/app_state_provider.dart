@@ -10,6 +10,7 @@ import '../services/gemini_service.dart';
 import '../services/tts_service.dart';
 import '../services/screen_stream_service.dart';
 import '../services/embedding_service.dart';
+import '../services/native_log_service.dart';
 import '../models/preferences.dart';
 import '../models/conversation.dart';
 import '../models/message.dart';
@@ -30,6 +31,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   final TTSService _ttsService;
   final ScreenStreamService _screenStreamService;
   final EmbeddingService _embeddingService;
+  final NativeLogService _nativeLogService;
 
   // Permission states
   PermissionState _screenRecordingPermission = PermissionState.notDetermined;
@@ -81,6 +83,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // Flag to ignore STT input while agent is speaking
   bool _ignoringSTT = false;
+  // Flag to discard the next transcript (it's TTS garbage)
+  bool _discardNextTranscript = false;
 
   // Getters for enhanced voice prompt
   bool get shouldPromptForEnhancedVoice => _shouldPromptForEnhancedVoice;
@@ -94,13 +98,15 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     TTSService? ttsService,
     ScreenStreamService? screenStreamService,
     EmbeddingService? embeddingService,
+    NativeLogService? nativeLogService,
   }) : _permissionService = permissionService ?? PermissionService(),
        _storageService = storageService ?? StorageService(),
        _speechService = speechService ?? SpeechService(),
        _geminiService = geminiService ?? GeminiService(),
        _ttsService = ttsService ?? TTSService(),
        _screenStreamService = screenStreamService ?? ScreenStreamService(),
-       _embeddingService = embeddingService ?? EmbeddingService() {
+       _embeddingService = embeddingService ?? EmbeddingService(),
+       _nativeLogService = nativeLogService ?? NativeLogService() {
     // Set up callback for when broadcast stops externally
     _screenStreamService.onBroadcastStopped = _onBroadcastStopped;
   }
@@ -165,6 +171,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
     // Initialize embedding service for RAG
     await _embeddingService.initialize();
+
+    // Start listening to native logs
+    _nativeLogService.startListening();
 
     // Show voice recommendation on first launch
     final hasSeenVoicePrompt = await _storageService
@@ -435,15 +444,25 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Handle speech events from native side
   void _handleSpeechEvent(Map<String, dynamic> event) {
     final eventType = event['event'] as String?;
+    debugPrint('🎤 [Speech] Event received: $eventType, ignoringSTT: $_ignoringSTT');
 
     if (eventType == 'segmentComplete') {
       // Ignore STT input while agent is speaking (it's just picking up TTS output)
       if (_ignoringSTT) {
+        debugPrint('🎤 [Speech] Ignoring segmentComplete - TTS is speaking');
         return;
       }
 
       final text = event['text'] as String?;
       if (text != null && text.isNotEmpty) {
+        // Check if this is TTS garbage that should be discarded
+        if (_discardNextTranscript) {
+          debugPrint('🎤 [Speech] Discarding TTS garbage transcript: "$text"');
+          _discardNextTranscript = false;
+          // Don't add to messages or send to Gemini - just clear the buffer
+          return;
+        }
+
         // Stop any TTS playback when user starts speaking
         _ttsService.stop();
         // Create a message for this completed segment
@@ -460,17 +479,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         // Send to Gemini and get response
         _sendToGemini(text);
 
-        // Restart speech recognition for next message
-        if (_isChatActive && !_isMicrophoneMuted) {
-          // Stop current session first, then restart
-          _speechService.stopListening().then((_) {
-            if (_isChatActive && !_isMicrophoneMuted) {
-              _speechService.startListening(
-                languageCode: _preferences.languageCode,
-              );
-            }
-          });
-        }
+        // Note: Don't restart speech recognition here - _sendToGemini will handle
+        // stopping for TTS and restarting after TTS completes
 
         notifyListeners();
       }
@@ -652,6 +662,7 @@ Current question/message: $message''';
 
         // Restart STT with clean state after agent finishes speaking
         if (_isChatActive && !_isMicrophoneMuted) {
+          debugPrint('🎤 [Speech] TTS finished, restarting STT...');
           // Small delay to ensure clean state before accepting input again
           await Future.delayed(const Duration(milliseconds: 100));
           // Clear audio samples collected during agent speech (it's just TTS noise)
@@ -659,11 +670,17 @@ Current question/message: $message''';
           await _speechService.startListening(
             languageCode: _preferences.languageCode,
           );
+          debugPrint('🎤 [Speech] STT restarted, setting ignoringSTT = false');
+
           _voiceAgentState = VoiceAgentState.listening;
           // Additional delay to let STT fully initialize before accepting input
           await Future.delayed(const Duration(milliseconds: 50));
           _ignoringSTT = false;
+          // The next transcript will be TTS garbage - discard it
+          _discardNextTranscript = true;
+          debugPrint('🎤 [Speech] Will discard next transcript (TTS garbage)');
         } else {
+          debugPrint('🎤 [Speech] Not restarting STT (chat inactive or mic muted)');
           _ignoringSTT = false;
         }
       }
@@ -971,6 +988,9 @@ Current question/message: $message''';
         debugPrint('📱 [AppLifecycle] App backgrounding - updating broadcast context with ${_currentMessages.length} messages');
         _updateBroadcastContext();
       }
+      // Reset STT ignore flag when backgrounding - ensures we can process transcripts
+      // from debug audio that may complete while backgrounded
+      _ignoringSTT = false;
     }
 
     if (state == AppLifecycleState.resumed) {
@@ -1051,10 +1071,28 @@ Current question/message: $message''';
 
   /// Restart speech recognition after coming back from background
   Future<void> _restartSpeechRecognition() async {
-    // Stop current recognition first to get a clean state
-    await _speechService.stopListening();
+    // Reset STT ignore flag - if we're resuming, we want to listen to user input
+    _ignoringSTT = false;
+
+    // Stop current recognition and capture any pending transcript
+    final pendingTranscript = await _speechService.stopListening();
     _audioLevelSubscription?.cancel();
     _audioLevelSubscription = null;
+
+    // Process any pending transcript that was captured before restart
+    if (pendingTranscript.isNotEmpty) {
+      debugPrint('🎤 [Speech] Processing pending transcript from restart: "$pendingTranscript"');
+      final message = Message(
+        id: DateTime.now().millisecondsSinceEpoch.toString(),
+        text: pendingTranscript,
+        timestamp: DateTime.now(),
+      );
+      _currentMessages.add(message);
+      notifyListeners();
+
+      // Send to Gemini
+      _sendToGemini(pendingTranscript);
+    }
 
     // Brief delay to allow audio session to reset
     await Future.delayed(const Duration(milliseconds: 200));

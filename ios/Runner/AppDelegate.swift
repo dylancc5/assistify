@@ -63,6 +63,10 @@ import Speech
   private var ttsAudioLevelEventChannel: FlutterEventChannel?
   private var ttsAudioLevelEventSink: FlutterEventSink?
 
+  // Native log forwarding properties
+  private var nativeLogEventChannel: FlutterEventChannel?
+  private var nativeLogEventSink: FlutterEventSink?
+
   // Background Gemini processing properties
   private var backgroundGeminiTask: UIBackgroundTaskIdentifier = .invalid
   private var geminiApiKey: String?
@@ -70,6 +74,7 @@ import Speech
   private var supabaseAnonKey: String?
   private var chatHistory: [[String: String]] = []
   private var conversationIds: [String] = []
+  private var lastProcessedRequestTime: TimeInterval = 0  // Track last processed request to avoid duplicates
 
   override func application(
     _ application: UIApplication,
@@ -193,6 +198,13 @@ import Speech
       binaryMessenger: controller.binaryMessenger
     )
     ttsAudioLevelEventChannel?.setStreamHandler(TTSAudioLevelStreamHandler(appDelegate: self))
+
+    // Set up event channel for native logs
+    nativeLogEventChannel = FlutterEventChannel(
+      name: "com.assistify/native_logs",
+      binaryMessenger: controller.binaryMessenger
+    )
+    nativeLogEventChannel?.setStreamHandler(NativeLogStreamHandler(appDelegate: self))
 
     // Set up audio interruption handling for background operation
     NotificationCenter.default.addObserver(
@@ -902,12 +914,12 @@ import Speech
 
       // Debug log to see what's happening
       if isNowBroadcasting != wasBroadcasting {
-        print("📺 [ScreenCapture] Status change detected: was=\(wasBroadcasting), now=\(isNowBroadcasting)")
+        logToFlutter("Status change detected: was=\(wasBroadcasting), now=\(isNowBroadcasting)", category: "ScreenCapture")
       }
 
       // If broadcast extension stopped while we were using it
       if wasBroadcasting && !isNowBroadcasting {
-        print("📺 [ScreenCapture] Broadcast extension stopped")
+        logToFlutter("Broadcast extension stopped", category: "ScreenCapture")
         self.isUsingBroadcastExtension = false
         self.isCapturingFrames = false
         self.useRawAudioSTT = false  // Switch back to normal STT
@@ -928,13 +940,13 @@ import Speech
         // Restart normal speech recognition if user was listening
         if self.shouldBeListening && self.isAppInForeground {
           DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) {
-            print("🎤 [Speech] Restarting normal speech recognition after broadcast stopped")
+            self.logToFlutter("Restarting normal speech recognition after broadcast stopped", category: "Speech")
             self.startFreshRecognition()
           }
         }
       } else if !wasBroadcasting && isNowBroadcasting {
         // Broadcast extension just started
-        print("📺 [ScreenCapture] Broadcast extension started - switching to SYSTEM-WIDE capture + raw audio STT")
+        logToFlutter("Broadcast extension started - switching to SYSTEM-WIDE capture + raw audio STT", category: "ScreenCapture")
         self.isUsingBroadcastExtension = true
         self.isCapturingFrames = true
         self.useRawAudioSTT = true  // Use raw audio recording for STT
@@ -949,7 +961,7 @@ import Speech
 
           // If we were listening before, stop normal recognition and switch to extension STT or raw audio
           if self.shouldBeListening {
-            print("🎙️ [BroadcastSTT] Switching to broadcast STT mode...")
+            self.logToFlutter("Switching to broadcast STT mode...", category: "BroadcastSTT")
             // Stop normal speech recognition if running
             if self.isListening {
               self.stopAudioEngine()
@@ -966,12 +978,12 @@ import Speech
                 userDefaults.synchronize()
                 let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
                 if extensionSTTActive {
-                  print("🎙️ [STT Mode] Using EXTENSION STT (native Speech Recognition in broadcast extension)")
-                  print("   ✓ Reliable, uses Apple's Speech framework directly")
+                  self.logToFlutter("Using EXTENSION STT (native Speech Recognition in broadcast extension)", category: "STT Mode")
+                  self.logToFlutter("✓ Reliable, uses Apple's Speech framework directly", category: "STT Mode")
                   self.startExtensionTranscriptMonitoring()
                 } else {
-                  print("🎙️ [STT Mode] Using RAW AUDIO STT (fallback file-based method)")
-                  print("   ⚠️ Less reliable - audio chunks passed to main app for transcription")
+                  self.logToFlutter("Using RAW AUDIO STT (fallback file-based method)", category: "STT Mode")
+                  self.logToFlutter("⚠️ Less reliable - audio chunks passed to main app for transcription", category: "STT Mode")
                   self.startRawAudioRecording()
                 }
               } else {
@@ -992,11 +1004,11 @@ import Speech
       do {
         let audioSession = AVAudioSession.sharedInstance()
 
-        // Don't deactivate - just reconfigure with mixWithOthers to allow concurrent audio
-        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+        // Configure with duckOthers to allow TTS to play in background over other audio
+        try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers, .duckOthers])
         try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
 
-        print("🎤 [Audio] Audio session reconfigured for speech recognition")
+        print("🎤 [Audio] Audio session reconfigured for speech recognition (with duckOthers)")
       } catch {
         print("🎤 [Audio] Error reconfiguring audio session: \(error.localizedDescription)")
       }
@@ -1055,7 +1067,7 @@ import Speech
       if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
         let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
         if extensionSTTActive {
-          print("🎙️ [ExtensionSTT] Extension is handling STT - monitoring for transcripts")
+          logToFlutter("Extension is handling STT - monitoring for transcripts", category: "ExtensionSTT")
           startExtensionTranscriptMonitoring()
           result(true)
           return
@@ -1063,7 +1075,7 @@ import Speech
       }
       
       // Fallback to file-based audio chunk processing
-      print("🎙️ [RawAudio] Starting raw audio STT (broadcast mode active, extension STT not available)")
+      logToFlutter("Starting raw audio STT (broadcast mode active, extension STT not available)", category: "RawAudio")
       startRawAudioRecording()
       result(true)
       return
@@ -1073,10 +1085,10 @@ import Speech
     let locale = Locale(identifier: languageCode)
     let newRecognizer = SFSpeechRecognizer(locale: locale)
 
-    print("Starting speech recognition with language: \(languageCode)")
+    logToFlutter("Starting speech recognition with language: \(languageCode)", category: "Speech")
     
     guard let recognizer = newRecognizer, recognizer.isAvailable else {
-      print("Speech recognition not available for language: \(languageCode)")
+      logToFlutter("Speech recognition not available for language: \(languageCode)", category: "Speech")
       result(FlutterError(code: "SPEECH_UNAVAILABLE",
                          message: "Speech recognition is not available for language: \(languageCode)",
                          details: nil))
@@ -1092,7 +1104,7 @@ import Speech
 
     // If already listening, stop first to restart with new language
     if isListening {
-      print("Stopping current recognition to restart with new language")
+      logToFlutter("Stopping current recognition to restart with new language", category: "Speech")
       stopAudioEngine()
       recognitionTask?.cancel()
       recognitionTask = nil
@@ -1293,14 +1305,160 @@ import Speech
       }
 
       // Get the current transcript (this is just for this segment since we restart on pause)
-      let transcript = self.currentTranscript.trimmingCharacters(in: .whitespaces)
+      let mainAppTranscript = self.currentTranscript.trimmingCharacters(in: .whitespaces)
+      
+      // Debug: Log STT cache information
+      self.logSTTCacheDebug(mainAppTranscript: mainAppTranscript)
 
       // Now stop the audio engine and reset
       self.stopAudioEngine()
       self.currentTranscript = ""
       self.lastTranscriptLength = 0
 
-      result(transcript)
+      result(mainAppTranscript)
+    }
+  }
+  
+  /// Log STT cache debug information when ending session
+  private func logSTTCacheDebug(mainAppTranscript: String) {
+    logToFlutter("=== STT Cache Debug (Session End) ===", category: "Debug")
+    logToFlutter("Main App STT Cache: '\(mainAppTranscript.isEmpty ? "(empty)" : mainAppTranscript)'", category: "Debug")
+    
+    // Check if broadcast extension is active
+    if isBroadcastExtensionActive() {
+      logToFlutter("Broadcast extension is ACTIVE", category: "Debug")
+      
+      // Check for extension STT transcript
+      if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+        userDefaults.synchronize()
+        
+        // Get latest extension transcript
+        if let extensionTranscript = userDefaults.string(forKey: "extensionTranscript"), !extensionTranscript.isEmpty {
+          let transcriptTime = userDefaults.double(forKey: "extensionTranscriptTime")
+          let timeString = Date(timeIntervalSince1970: transcriptTime).description
+          logToFlutter("Extension STT Latest Transcript: '\(extensionTranscript)' (saved at: \(timeString))", category: "Debug")
+        } else {
+          logToFlutter("Extension STT Latest Transcript: (none)", category: "Debug")
+        }
+        
+        // Check extension STT status
+        let extensionSTTActive = userDefaults.bool(forKey: "extensionSTTActive")
+        logToFlutter("Extension STT Active: \(extensionSTTActive)", category: "Debug")
+        
+        // Process any pending audio chunks
+        processPendingAudioChunksForDebug()
+      }
+    } else {
+      logToFlutter("Broadcast extension is NOT active", category: "Debug")
+    }
+    
+    logToFlutter("=== End STT Cache Debug ===", category: "Debug")
+  }
+  
+  /// Process and transcribe any pending audio chunks from extension for debug
+  private func processPendingAudioChunksForDebug() {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      logToFlutter("Could not access App Group container for audio chunks", category: "Debug")
+      return
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path) else {
+      logToFlutter("No audio directory found or could not read", category: "Debug")
+      return
+    }
+
+    // Get all PCM files, sorted by name (which includes timestamp)
+    let audioFiles = files.filter { $0.hasSuffix(".pcm") }.sorted()
+
+    if audioFiles.isEmpty {
+      logToFlutter("No pending audio chunks found", category: "Debug")
+      return
+    }
+
+    logToFlutter("Found \(audioFiles.count) pending audio chunks", category: "Debug")
+
+    // Aggregate all audio data
+    var aggregatedData = Data()
+    for filename in audioFiles {
+      let fileURL = audioDirectory.appendingPathComponent(filename)
+      if let chunkData = try? Data(contentsOf: fileURL) {
+        aggregatedData.append(chunkData)
+        logToFlutter("  - \(filename): \(chunkData.count) bytes", category: "Debug")
+      }
+    }
+
+    guard !aggregatedData.isEmpty else {
+      logToFlutter("Aggregated audio data is empty", category: "Debug")
+      return
+    }
+
+    logToFlutter("Total aggregated audio: \(aggregatedData.count) bytes", category: "Debug")
+
+    // Convert PCM to WAV and save to file for transcription
+    let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+    let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+    let wavURL = documentsPath.appendingPathComponent("debug_audio_\(timestamp).wav")
+
+    // Write WAV file with header
+    if writeWAVFile(pcmData: aggregatedData, to: wavURL) {
+      logToFlutter("Created WAV file for transcription: \(wavURL.lastPathComponent)", category: "Debug")
+      
+      // Transcribe the audio
+      transcribeDebugAudio(url: wavURL)
+    } else {
+      logToFlutter("Failed to create WAV file for transcription", category: "Debug")
+    }
+  }
+  
+  /// Transcribe audio file for debug purposes
+  private func transcribeDebugAudio(url: URL) {
+    logToFlutter("Transcribing debug audio file: \(url.lastPathComponent)", category: "Debug")
+
+    guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: currentLanguageCode)) else {
+      logToFlutter("Speech recognizer not available for \(currentLanguageCode)", category: "Debug")
+      return
+    }
+
+    guard recognizer.isAvailable else {
+      logToFlutter("Speech recognizer not available", category: "Debug")
+      return
+    }
+
+    let request = SFSpeechURLRecognitionRequest(url: url)
+    request.shouldReportPartialResults = false
+
+    recognizer.recognitionTask(with: request) { [weak self] result, error in
+      guard let self = self else { return }
+
+      if let error = error {
+        self.logToFlutter("Debug audio transcription error: \(error.localizedDescription)", category: "Debug")
+        self.cleanupRawAudioFile(url: url)
+        return
+      }
+
+      guard let result = result, result.isFinal else { return }
+
+      let transcript = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
+
+      if transcript.isEmpty {
+        self.logToFlutter("Debug audio transcription was empty", category: "Debug")
+      } else {
+        self.logToFlutter("Debug Audio Transcription Result: '\(transcript)'", category: "Debug")
+
+        // Send transcription to Flutter as a segment complete event
+        if let sink = self.speechEventSink {
+          DispatchQueue.main.async {
+            self.logToFlutter("Sending segmentComplete event to Flutter with debug audio transcript", category: "Debug")
+            sink(["event": "segmentComplete", "text": transcript, "source": "debugAudio"])
+          }
+        } else {
+          self.logToFlutter("⚠️ speechEventSink is nil - cannot send debug audio transcript to Flutter!", category: "Debug")
+        }
+      }
+
+      self.cleanupRawAudioFile(url: url)
     }
   }
 
@@ -1539,12 +1697,9 @@ import Speech
     stopBackgroundGeminiPolling()
     endBackgroundGeminiTask()
 
-    // Clear any stale pending Gemini request flags to prevent old requests from triggering
-    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
-      userDefaults.set(false, forKey: "geminiRequestPending")
-      userDefaults.synchronize()
-      print("🤖 [BackgroundGemini] Cleared pending request flag on foreground")
-    }
+    // DON'T clear geminiRequestPending here - let Dart's _checkBackgroundGeminiResponse() read it first
+    // The timestamp-based deduplication (lastProcessedRequestTime) prevents re-processing
+    print("🤖 [BackgroundGemini] App foregrounded - Dart will check for pending responses")
 
     // If we were recording raw audio with AVAudioRecorder, stop and transcribe it
     if isRecordingRawAudio && audioRecorder != nil {
@@ -1616,16 +1771,12 @@ import Speech
   private var geminiPollingTimer: Timer?
 
   private func startBackgroundGeminiPolling() {
-    // Clear any stale pending flags before starting to poll
-    // This ensures we only respond to NEW requests from this background session
-    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
-      userDefaults.set(false, forKey: "geminiRequestPending")
-      userDefaults.set(false, forKey: "hasNewTranscript")
-      userDefaults.removeObject(forKey: "extensionTranscript")
-      userDefaults.removeObject(forKey: "geminiFramePaths")
-      userDefaults.synchronize()
-      print("🤖 [BackgroundGemini] Cleared all stale flags and data before polling")
-    }
+    // Record the timestamp when polling starts - we'll only process requests newer than this
+    let pollingStartTime = Date().timeIntervalSince1970
+
+    // DON'T clear flags here - the extension may have just set them
+    // Instead, we'll use timestamp comparison to detect stale vs new requests
+    print("🤖 [BackgroundGemini] Starting polling (will process requests after \(pollingStartTime))")
 
     // Start background task
     backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
@@ -1644,8 +1795,11 @@ import Speech
       userDefaults.synchronize()
 
       let isPending = userDefaults.bool(forKey: "geminiRequestPending")
-      if isPending {
-        print("🤖 [BackgroundGemini] ✓ Detected pending request from extension - processing...")
+      let requestTime = userDefaults.double(forKey: "geminiRequestTime")
+
+      // Only process if pending AND newer than last processed request
+      if isPending && requestTime > self.lastProcessedRequestTime {
+        print("🤖 [BackgroundGemini] ✓ Detected pending request from extension (time: \(requestTime)) - processing...")
         self.stopBackgroundGeminiPolling()
         self.checkAndProcessGeminiRequest()
       }
@@ -1660,6 +1814,12 @@ import Speech
   // MARK: - Background Gemini Processing
 
   private func checkAndProcessGeminiRequest() {
+    // Skip processing if app is in foreground - Flutter handles it via segmentComplete event
+    guard !isAppInForeground else {
+      print("🤖 [BackgroundGemini] Skipping - app is in foreground, Flutter will handle via segmentComplete")
+      return
+    }
+
     guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
       print("⚠️ [BackgroundGemini] Failed to access UserDefaults")
       return
@@ -1667,12 +1827,20 @@ import Speech
     userDefaults.synchronize()
 
     let isPending = userDefaults.bool(forKey: "geminiRequestPending")
+    let requestTime = userDefaults.double(forKey: "geminiRequestTime")
+
     guard isPending else {
       print("🤖 [BackgroundGemini] No pending request found")
       return
     }
 
-    print("🤖 [BackgroundGemini] ✓ Found pending Gemini request - starting background task")
+    // Check if this is a new request (newer than last processed)
+    guard requestTime > lastProcessedRequestTime else {
+      print("🤖 [BackgroundGemini] Request already processed (time: \(requestTime) <= \(lastProcessedRequestTime))")
+      return
+    }
+
+    print("🤖 [BackgroundGemini] ✓ Found pending Gemini request (time: \(requestTime)) - starting background task")
 
     // Get request data
     guard let transcript = userDefaults.string(forKey: "extensionTranscript"),
@@ -1694,9 +1862,9 @@ import Speech
 
     print("🤖 [BackgroundGemini] Transcript: \"\(trimmedTranscript.prefix(50))...\" with \(framePaths.count) frames")
 
-    // Clear pending flag
-    userDefaults.set(false, forKey: "geminiRequestPending")
-    userDefaults.synchronize()
+    // Mark this request as processed using timestamp (don't clear the flag - let Dart read it first)
+    lastProcessedRequestTime = requestTime
+    print("🤖 [BackgroundGemini] Marked request as processed (time: \(requestTime))")
 
     // Start background task
     backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
@@ -2019,11 +2187,19 @@ import Speech
       return
     }
 
+    // Clear response data
     userDefaults.removeObject(forKey: "geminiResponse")
     userDefaults.removeObject(forKey: "geminiOriginalTranscript")
     userDefaults.removeObject(forKey: "geminiResponseReady")
     userDefaults.removeObject(forKey: "geminiResponseTime")
+
+    // Also clear the request pending flag and data now that Dart has processed it
+    userDefaults.set(false, forKey: "geminiRequestPending")
+    userDefaults.removeObject(forKey: "extensionTranscript")
+    userDefaults.removeObject(forKey: "geminiFramePaths")
     userDefaults.synchronize()
+
+    print("🤖 [BackgroundGemini] Cleared all response and request data after Dart processing")
 
     result(true)
   }
@@ -2255,17 +2431,31 @@ import Speech
   private var lastProcessedTranscriptTime: TimeInterval = 0
 
   private func startBroadcastAudioMonitoring() {
-    print("🎙️ [BroadcastAudio] Starting to monitor for silence detection from extension")
+    // Don't create duplicate timers
+    guard broadcastAudioMonitorTimer == nil else {
+      logToFlutter("Monitor already running", category: "BroadcastAudio")
+      return
+    }
+
+    logToFlutter("Starting to monitor for silence detection from extension", category: "BroadcastAudio")
 
     // Check for silence detection flag every 500ms
     broadcastAudioMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self = self else { return }
+      // Check for extension log messages and forward them
+      self.checkAndForwardExtensionLogs()
       self.checkBroadcastSilenceDetection()
     }
   }
   
   private func startExtensionTranscriptMonitoring() {
-    print("🎙️ [ExtensionSTT] Starting to monitor for extension transcripts")
+    // Don't create duplicate timers
+    guard extensionTranscriptMonitorTimer == nil else {
+      logToFlutter("Extension transcript monitor already running", category: "ExtensionSTT")
+      return
+    }
+    
+    logToFlutter("Starting to monitor for extension transcripts", category: "ExtensionSTT")
     
     // Stop any existing audio chunk monitoring
     stopBroadcastAudioMonitoring()
@@ -2273,6 +2463,8 @@ import Speech
     // Check for new transcripts every 500ms
     extensionTranscriptMonitorTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
       guard let self = self else { return }
+      // Check for extension log messages and forward them
+      self.checkAndForwardExtensionLogs()
       self.checkExtensionTranscript()
     }
   }
@@ -2283,11 +2475,19 @@ import Speech
   }
   
   private func checkExtensionTranscript() {
-    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+      logToFlutter("Could not access UserDefaults for transcript check", category: "ExtensionSTT")
+      return
+    }
     userDefaults.synchronize()
     
     let hasNewTranscript = userDefaults.bool(forKey: "hasNewTranscript")
     let transcriptTime = userDefaults.double(forKey: "extensionTranscriptTime")
+    
+    // Debug: Log what we're checking
+    if hasNewTranscript {
+      logToFlutter("Found hasNewTranscript=true, time=\(transcriptTime), lastProcessed=\(lastProcessedTranscriptTime)", category: "ExtensionSTT")
+    }
     
     // Only process if this is a new transcript
     if hasNewTranscript && transcriptTime > lastProcessedTranscriptTime {
@@ -2295,6 +2495,7 @@ import Speech
       
       // Get the transcript
       guard let transcript = userDefaults.string(forKey: "extensionTranscript"), !transcript.isEmpty else {
+        logToFlutter("hasNewTranscript=true but transcript is empty or nil", category: "ExtensionSTT")
         // Clear flag even if transcript is empty
         userDefaults.set(false, forKey: "hasNewTranscript")
         userDefaults.synchronize()
@@ -2305,13 +2506,16 @@ import Speech
       userDefaults.set(false, forKey: "hasNewTranscript")
       userDefaults.synchronize()
       
-      print("🎙️ [ExtensionSTT] Received transcript: \(transcript)")
+      logToFlutter("✓ Received transcript: '\(transcript)' - sending to Flutter", category: "ExtensionSTT")
       
       // Send transcription to Flutter as a segment complete event
       if let sink = speechEventSink {
         DispatchQueue.main.async {
+          self.logToFlutter("Sending segmentComplete event to Flutter with transcript: '\(transcript)'", category: "ExtensionSTT")
           sink(["event": "segmentComplete", "text": transcript, "source": "extensionSTT"])
         }
+      } else {
+        logToFlutter("⚠️ speechEventSink is nil - cannot send transcript to Flutter!", category: "ExtensionSTT")
       }
     }
   }
@@ -2321,14 +2525,56 @@ import Speech
     broadcastAudioMonitorTimer = nil
   }
 
+  // Amplitude-based silence detection
+  private let quietAmplitudeThreshold: Float = 0.02  // Same threshold as extension uses
+  private let consecutiveQuietChunksRequired: Int = 5  // Need 5 quiet chunks to trigger
+  private var lastProcessedExtensionLogTime: TimeInterval = 0
+  private var lastAmplitudeBasedSilenceTime: TimeInterval = 0  // Prevent duplicate triggers
+  
+  /// Check for extension log messages and forward them to Flutter
+  private func checkAndForwardExtensionLogs() {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+    userDefaults.synchronize()
+    
+    let logTime = userDefaults.double(forKey: "extensionLogTime")
+    
+    // Only process if this is a new log message
+    if logTime > lastProcessedExtensionLogTime {
+      lastProcessedExtensionLogTime = logTime
+      
+      if let logMessage = userDefaults.string(forKey: "extensionLogMessage"),
+         let category = userDefaults.string(forKey: "extensionLogCategory") {
+        logToFlutter("🎵 \(logMessage)", category: category)
+      }
+    }
+  }
+
   private func checkBroadcastSilenceDetection() {
     guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
     userDefaults.synchronize()
 
+    // Check for amplitude-based silence detection from audio chunks
+    if checkAmplitudeBasedSilence() {
+      let now = Date().timeIntervalSince1970
+      // Prevent duplicate triggers within 3 seconds (to avoid processing same chunks multiple times)
+      if now - lastAmplitudeBasedSilenceTime > 3.0 {
+        lastAmplitudeBasedSilenceTime = now
+        logToFlutter("✓ Amplitude-based silence detected (5 consecutive quiet chunks) - triggering transcription", category: "BroadcastAudio")
+        aggregateAndTranscribeAudioChunks()
+        return
+      } else {
+        logToFlutter("Amplitude-based silence detected but skipping (triggered recently)", category: "BroadcastAudio")
+      }
+    }
+
+    // Fallback to old silence detection flag method
     let silenceDetected = userDefaults.bool(forKey: "silenceDetected")
     let silenceTime = userDefaults.double(forKey: "silenceDetectedTime")
 
     // Only process if this is a new silence detection
+    if silenceDetected {
+      logToFlutter("Silence detected: \(silenceDetected), time: \(silenceTime), lastProcessed: \(lastProcessedSilenceTime)", category: "BroadcastAudio")
+    }
     if silenceDetected && silenceTime > lastProcessedSilenceTime {
       lastProcessedSilenceTime = silenceTime
 
@@ -2336,9 +2582,115 @@ import Speech
       userDefaults.set(false, forKey: "silenceDetected")
       userDefaults.synchronize()
 
-      print("🎙️ [BroadcastAudio] Silence detected - aggregating and transcribing audio chunks")
+      logToFlutter("Silence detected - aggregating and transcribing audio chunks", category: "BroadcastAudio")
       aggregateAndTranscribeAudioChunks()
     }
+  }
+  
+  /// Check if we have 5 consecutive audio chunks with amplitude below threshold
+  private func checkAmplitudeBasedSilence() -> Bool {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      return false
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+
+    guard let files = try? FileManager.default.contentsOfDirectory(atPath: audioDirectory.path) else {
+      return false
+    }
+
+    // Get all PCM files, sorted by name (which includes timestamp)
+    let audioFiles = files.filter { $0.hasSuffix(".pcm") }.sorted()
+
+    // Need at least 5 chunks to check
+    guard audioFiles.count >= consecutiveQuietChunksRequired else {
+      return false
+    }
+
+    // Check the last 5 chunks (most recent)
+    let recentChunks = Array(audioFiles.suffix(consecutiveQuietChunksRequired))
+    var consecutiveQuiet = 0
+    var allQuiet = true
+
+    // Only log every 10th check to avoid spam (check runs every 500ms)
+    let shouldLog = Int.random(in: 0..<10) == 0
+    if shouldLog {
+      logToFlutter("Checking amplitude for last \(recentChunks.count) chunks (total chunks: \(audioFiles.count)):", category: "BroadcastAudio")
+    }
+
+    for filename in recentChunks {
+      // Extract amplitude from filename: audio_timestamp_seq_ampXXXXX[_silent].pcm
+      let amplitude = extractAmplitudeFromFilename(filename)
+      
+      if shouldLog {
+        logToFlutter("  Chunk: \(filename) - Amplitude: \(String(format: "%.4f", amplitude)) (threshold: \(quietAmplitudeThreshold))", category: "BroadcastAudio")
+      }
+
+      if amplitude < quietAmplitudeThreshold {
+        consecutiveQuiet += 1
+      } else {
+        allQuiet = false
+        if shouldLog {
+          logToFlutter("  ✗ Chunk above threshold - breaking check", category: "BroadcastAudio")
+        }
+        break  // Reset if we find a non-quiet chunk
+      }
+    }
+
+    if allQuiet && consecutiveQuiet >= consecutiveQuietChunksRequired {
+      logToFlutter("✓✓✓ Found \(consecutiveQuiet) consecutive quiet chunks (threshold: \(quietAmplitudeThreshold)) - SILENCE DETECTED", category: "BroadcastAudio")
+      return true
+    } else if shouldLog {
+      logToFlutter("  Only found \(consecutiveQuiet)/\(consecutiveQuietChunksRequired) quiet chunks - not enough", category: "BroadcastAudio")
+    }
+
+    return false
+  }
+  
+  /// Extract amplitude from filename
+  /// Format: audio_timestamp_seq_ampXXXXX[_silent].pcm
+  private func extractAmplitudeFromFilename(_ filename: String) -> Float {
+    // Look for _amp followed by digits
+    if let ampRange = filename.range(of: "_amp") {
+      let afterAmp = filename[ampRange.upperBound...]
+      // Find where amplitude number ends (either _silent or .pcm)
+      let endRange = afterAmp.range(of: "_") ?? afterAmp.range(of: ".")
+      let amplitudeString = String(endRange != nil ? afterAmp[..<endRange!.lowerBound] : afterAmp)
+      
+      if let amplitudeInt = Int(amplitudeString) {
+        // Convert back from integer (was multiplied by 10000)
+        return Float(amplitudeInt) / 10000.0
+      }
+    }
+    
+    // Fallback: if we can't parse, read the file and calculate
+    return calculateAmplitudeFromFile(filename: filename)
+  }
+  
+  /// Calculate amplitude from audio file (fallback if filename parsing fails)
+  private func calculateAmplitudeFromFile(filename: String) -> Float {
+    guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+      return 0.0
+    }
+
+    let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
+    let fileURL = audioDirectory.appendingPathComponent(filename)
+
+    guard let audioData = try? Data(contentsOf: fileURL) else {
+      return 0.0
+    }
+
+    // Calculate RMS amplitude
+    let samples = audioData.withUnsafeBytes { (pointer: UnsafeRawBufferPointer) -> [Int16] in
+      let int16Pointer = pointer.bindMemory(to: Int16.self)
+      return Array(int16Pointer)
+    }
+
+    guard !samples.isEmpty else { return 0.0 }
+
+    let sum = samples.reduce(0.0) { $0 + Double($1) * Double($1) }
+    let rms = sqrt(sum / Double(samples.count))
+    return Float(rms / 32767.0)
   }
 
   private func aggregateAndTranscribeAudioChunks() {
@@ -2358,11 +2710,17 @@ import Speech
     let audioFiles = files.filter { $0.hasSuffix(".pcm") }.sorted()
 
     if audioFiles.isEmpty {
-      print("🎙️ [BroadcastAudio] No audio chunks to process")
+      logToFlutter("No audio chunks to process", category: "BroadcastAudio")
       return
     }
 
-    print("🎙️ [BroadcastAudio] Found \(audioFiles.count) audio chunks to aggregate")
+    logToFlutter("Found \(audioFiles.count) audio chunks to aggregate", category: "BroadcastAudio")
+    
+    // Log amplitude for each chunk being aggregated
+    for filename in audioFiles {
+      let amplitude = extractAmplitudeFromFilename(filename)
+      logToFlutter("  Aggregating: \(filename) - Amplitude: \(String(format: "%.4f", amplitude))", category: "BroadcastAudio")
+    }
 
     // Aggregate all audio data
     var aggregatedData = Data()
@@ -2374,12 +2732,12 @@ import Speech
     }
 
     guard !aggregatedData.isEmpty else {
-      print("🎙️ [BroadcastAudio] Aggregated data is empty")
+      logToFlutter("⚠️ Aggregated data is empty", category: "BroadcastAudio")
       clearBroadcastAudioChunks()
       return
     }
 
-    print("🎙️ [BroadcastAudio] Aggregated \(aggregatedData.count) bytes of audio data")
+    logToFlutter("✅ Aggregated \(aggregatedData.count) bytes of audio data", category: "BroadcastAudio")
 
     // Convert PCM to WAV and save to file for transcription
     let documentsPath = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -2388,15 +2746,16 @@ import Speech
 
     // Write WAV file with header
     if writeWAVFile(pcmData: aggregatedData, to: wavURL) {
-      print("🎙️ [BroadcastAudio] Written WAV file: \(wavURL.lastPathComponent)")
+      logToFlutter("✅ Written WAV file: \(wavURL.lastPathComponent)", category: "BroadcastAudio")
 
       // Clear audio chunks after aggregation
       clearBroadcastAudioChunks()
 
       // Transcribe the audio
+      logToFlutter("🎤 Starting transcription of aggregated audio...", category: "BroadcastAudio")
       transcribeBroadcastAudio(url: wavURL)
     } else {
-      print("🎙️ [BroadcastAudio] Failed to write WAV file")
+      logToFlutter("❌ Failed to write WAV file", category: "BroadcastAudio")
       clearBroadcastAudioChunks()
     }
   }
@@ -2474,16 +2833,16 @@ import Speech
   }
 
   private func transcribeBroadcastAudio(url: URL) {
-    print("🎙️ [BroadcastAudio] Transcribing audio file: \(url.lastPathComponent)")
+    logToFlutter("🎤 Transcribing audio file: \(url.lastPathComponent)", category: "BroadcastAudio")
 
     guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: currentLanguageCode)) else {
-      print("🎙️ [BroadcastAudio] Speech recognizer not available for \(currentLanguageCode)")
+      logToFlutter("❌ Speech recognizer not available for \(currentLanguageCode)", category: "BroadcastAudio")
       cleanupRawAudioFile(url: url)
       return
     }
 
     guard recognizer.isAvailable else {
-      print("🎙️ [BroadcastAudio] Speech recognizer not available")
+      logToFlutter("❌ Speech recognizer not available", category: "BroadcastAudio")
       cleanupRawAudioFile(url: url)
       return
     }
@@ -2491,29 +2850,40 @@ import Speech
     let request = SFSpeechURLRecognitionRequest(url: url)
     request.shouldReportPartialResults = false
 
+    logToFlutter("📝 Starting recognition task for audio file...", category: "BroadcastAudio")
+
     recognizer.recognitionTask(with: request) { [weak self] result, error in
       guard let self = self else { return }
 
       if let error = error {
-        print("🎙️ [BroadcastAudio] Transcription error: \(error.localizedDescription)")
+        let errorCode = (error as NSError).code
+        logToFlutter("❌ Transcription error (code \(errorCode)): \(error.localizedDescription)", category: "BroadcastAudio")
         self.cleanupRawAudioFile(url: url)
         return
       }
 
-      guard let result = result, result.isFinal else { return }
+      guard let result = result, result.isFinal else {
+        if let result = result {
+          logToFlutter("⏳ Partial transcription result (not final yet)", category: "BroadcastAudio")
+        }
+        return
+      }
 
       let transcript = result.bestTranscription.formattedString.trimmingCharacters(in: .whitespaces)
 
       if transcript.isEmpty {
-        print("🎙️ [BroadcastAudio] Transcription was empty")
+        logToFlutter("⚠️ Transcription was empty", category: "BroadcastAudio")
       } else {
-        print("🎙️ [BroadcastAudio] Transcribed: \(transcript)")
+        logToFlutter("✅ Transcribed: '\(transcript)' - sending to Flutter", category: "BroadcastAudio")
 
         // Send transcription to Flutter
         if let sink = self.speechEventSink {
           DispatchQueue.main.async {
+            self.logToFlutter("📤 Sending segmentComplete event to Flutter with transcript: '\(transcript)'", category: "BroadcastAudio")
             sink(["event": "segmentComplete", "text": transcript, "source": "broadcastAudio"])
           }
+        } else {
+          self.logToFlutter("❌ speechEventSink is nil - cannot send transcript to Flutter!", category: "BroadcastAudio")
         }
       }
 
@@ -2672,15 +3042,31 @@ import Speech
     if useRawAudioSTT && isBroadcastExtensionActive() {
       // Only clear chunks if we're using file-based approach (not extension STT)
       if extensionTranscriptMonitorTimer == nil {
-        print("🎙️ [BroadcastAudio] Clearing audio buffer after TTS finished")
+        logToFlutter("Clearing audio buffer after TTS finished", category: "BroadcastAudio")
         clearBroadcastAudioChunks()
 
         // Also reset the silence time tracker to avoid processing stale detections
         lastProcessedSilenceTime = Date().timeIntervalSince1970
       } else {
-        print("🎙️ [ExtensionSTT] TTS finished - extension will handle new audio")
+        // Log what the extension has captured (for debugging)
+        if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+          userDefaults.synchronize()
+          let hasTranscript = userDefaults.bool(forKey: "hasNewTranscript")
+          let transcript = userDefaults.string(forKey: "extensionTranscript") ?? "(empty)"
+          logToFlutter("TTS finished - extension buffer: hasNew=\(hasTranscript), text='\(transcript)'", category: "ExtensionSTT")
+        }
+
+        logToFlutter("TTS finished - extension will handle new audio", category: "ExtensionSTT")
         // Reset transcript time to avoid processing old transcripts
-        lastProcessedTranscriptTime = Date().timeIntervalSince1970
+        // Use a slightly earlier time to ensure we catch transcripts that might have been saved
+        // just before TTS finished (with timestamps very close to now)
+        lastProcessedTranscriptTime = Date().timeIntervalSince1970 - 1.0
+
+        // Ensure monitoring is still active after TTS
+        if extensionTranscriptMonitorTimer == nil {
+          logToFlutter("Restarting extension transcript monitoring after TTS", category: "ExtensionSTT")
+          startExtensionTranscriptMonitoring()
+        }
       }
     }
   }
@@ -2695,6 +3081,34 @@ import Speech
   // Set the TTS audio level event sink
   func setTTSAudioLevelEventSink(_ sink: FlutterEventSink?) {
     ttsAudioLevelEventSink = sink
+  }
+
+  // MARK: - Native Log Forwarding
+
+  func setNativeLogEventSink(_ sink: FlutterEventSink?) {
+    nativeLogEventSink = sink
+  }
+
+  /// Log message to both Xcode console and Flutter terminal
+  /// - Parameters:
+  ///   - message: The log message
+  ///   - category: Optional category tag (e.g., "ExtensionSTT", "BroadcastAudio", "Speech")
+  private func logToFlutter(_ message: String, category: String = "") {
+    // Always print to Xcode console (existing behavior)
+    let formattedMessage = category.isEmpty ? message : "[\(category)] \(message)"
+    print(formattedMessage)
+
+    // Send to Flutter if event sink is available
+    if let sink = nativeLogEventSink {
+      let logData: [String: Any] = [
+        "message": message,
+        "category": category,
+        "timestamp": Date().timeIntervalSince1970
+      ]
+      DispatchQueue.main.async {
+        sink(logData)
+      }
+    }
   }
 
   private func stopSpeaking(result: @escaping FlutterResult) {
@@ -2842,6 +3256,26 @@ class TTSAudioLevelStreamHandler: NSObject, FlutterStreamHandler {
 
   func onCancel(withArguments arguments: Any?) -> FlutterError? {
     appDelegate?.setTTSAudioLevelEventSink(nil)
+    return nil
+  }
+}
+
+// MARK: - Native Log Stream Handler
+
+class NativeLogStreamHandler: NSObject, FlutterStreamHandler {
+  private weak var appDelegate: AppDelegate?
+
+  init(appDelegate: AppDelegate) {
+    self.appDelegate = appDelegate
+  }
+
+  func onListen(withArguments arguments: Any?, eventSink events: @escaping FlutterEventSink) -> FlutterError? {
+    appDelegate?.setNativeLogEventSink(events)
+    return nil
+  }
+
+  func onCancel(withArguments arguments: Any?) -> FlutterError? {
+    appDelegate?.setNativeLogEventSink(nil)
     return nil
   }
 }

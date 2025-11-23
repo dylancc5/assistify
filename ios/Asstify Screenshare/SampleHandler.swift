@@ -40,6 +40,8 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var lastTranscript = ""
     private var silenceTimer: Timer?
     private let silenceTimeout: TimeInterval = 2.5  // Same as chunk-based silence detection
+    private var lastSavedTranscript: String = ""
+    private var lastSavedTranscriptTime: TimeInterval = 0
     
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         // User has requested to start the broadcast. Setup info from the UI extension can be supplied but optional.
@@ -306,17 +308,7 @@ class SampleHandler: RPBroadcastSampleHandler {
                 }
             }
 
-            // Calculate audio level for silence detection
-            let level = self.calculateAudioLevel(from: audioData)
-            let isSilent = level < 0.02  // Threshold for silence
-
-            if isSilent {
-                self.consecutiveSilentChunks += 1
-            } else {
-                self.consecutiveSilentChunks = 0
-            }
-
-            // Accumulate audio data
+            // Accumulate audio data (we'll calculate amplitude at chunk level, not buffer level)
             self.currentAudioData.append(audioData)
 
             // Check if we should save a chunk
@@ -332,11 +324,39 @@ class SampleHandler: RPBroadcastSampleHandler {
             if shouldSaveChunk && self.currentAudioData.count > 0 {
                 self.lastAudioChunkTime = now
 
-                // Save current chunk
-                self.writeAudioChunkToSharedContainer(self.currentAudioData, isSilent: self.consecutiveSilentChunks >= self.silenceThresholdChunks)
+                // Calculate average amplitude for the entire chunk (more accurate than buffer-level)
+                let avgAmplitude = self.calculateAudioLevel(from: self.currentAudioData)
+                
+                // Determine if this chunk is silent based on its average amplitude
+                let isChunkSilent = avgAmplitude < 0.02  // Threshold for silence
+                
+                // Track consecutive silent chunks for triggering silence detection
+                if isChunkSilent {
+                    self.consecutiveSilentChunks += 1
+                } else {
+                    self.consecutiveSilentChunks = 0
+                }
+                
+                // Debug: Log amplitude for each chunk (both print and save to UserDefaults for main app)
+                let chunkNumber = self.audioChunkSequence + 1
+                let silentStatus = isChunkSilent ? " (SILENT)" : ""
+                let logMessage = "Audio chunk #\(chunkNumber) - Avg amplitude: \(String(format: "%.4f", avgAmplitude))\(silentStatus)"
+                print("🎵 [BroadcastExtension] \(logMessage)")
+                
+                // Save to UserDefaults so main app can forward to Flutter
+                if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+                    let timestamp = Date().timeIntervalSince1970
+                    userDefaults.set(logMessage, forKey: "extensionLogMessage")
+                    userDefaults.set(timestamp, forKey: "extensionLogTime")
+                    userDefaults.set("BroadcastExtension", forKey: "extensionLogCategory")
+                    userDefaults.synchronize()
+                }
+
+                // Save current chunk with amplitude, marked as silent if chunk-level amplitude is below threshold
+                self.writeAudioChunkToSharedContainer(self.currentAudioData, avgAmplitude: avgAmplitude, isSilent: isChunkSilent)
                 self.currentAudioData = Data()
 
-                // If we've detected silence, mark it for the main app
+                // If we've detected 5 consecutive silent chunks, mark it for the main app
                 if self.consecutiveSilentChunks >= self.silenceThresholdChunks {
                     self.markSilenceDetected()
                     self.consecutiveSilentChunks = 0  // Reset after marking
@@ -362,7 +382,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         return Float(rms / 32767.0)
     }
 
-    private func writeAudioChunkToSharedContainer(_ audioData: Data, isSilent: Bool) {
+    private func writeAudioChunkToSharedContainer(_ audioData: Data, avgAmplitude: Float, isSilent: Bool) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
             return
         }
@@ -374,11 +394,13 @@ class SampleHandler: RPBroadcastSampleHandler {
             try? FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true, attributes: nil)
         }
 
-        // Generate filename with timestamp, sequence, and silence marker
+        // Generate filename with timestamp, sequence, amplitude, and silence marker
         let timestamp = Int(Date().timeIntervalSince1970 * 1000)
         audioChunkSequence += 1
         let silenceMarker = isSilent ? "_silent" : ""
-        let filename = "audio_\(timestamp)_\(audioChunkSequence)\(silenceMarker).pcm"
+        // Store amplitude in filename (multiply by 10000 to preserve precision as integer)
+        let amplitudeInt = Int(avgAmplitude * 10000)
+        let filename = "audio_\(timestamp)_\(audioChunkSequence)_amp\(amplitudeInt)\(silenceMarker).pcm"
         let fileURL = audioDirectory.appendingPathComponent(filename)
 
         // Write audio chunk
@@ -520,7 +542,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     private func startRecognition() {
         guard let recognizer = speechRecognizer, recognizer.isAvailable else {
-            print("[BroadcastExtension] Cannot start recognition - recognizer not available")
+            logToUserDefaults("❌ Cannot start recognition - recognizer not available")
             // Mark that extension STT is not active
             if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
                 userDefaults.set(false, forKey: "extensionSTTActive")
@@ -567,37 +589,64 @@ class SampleHandler: RPBroadcastSampleHandler {
 
                 // If final result, save it
                 if result.isFinal {
-                    print("🎤 [BroadcastExtension] Final transcript: \(transcript)")
-                    self.saveTranscription(transcript)
+                    print("🎤 [BroadcastExtension] ✓ FINAL result received: \(transcript)")
+                    // Cancel silence timer since we have a final result
+                    self.silenceTimer?.invalidate()
+                    self.silenceTimer = nil
+
+                    if !transcript.isEmpty {
+                        self.saveTranscription(transcript)
+                    }
                     self.lastTranscript = ""
-                    // Restart recognition for next utterance
-                    self.restartRecognition()
+                    // End current request - recognition will restart when new audio arrives
+                    self.recognitionRequest?.endAudio()
+                    self.recognitionRequest = nil
+                    self.recognitionTask = nil
+                    self.isRecognizing = false
+                    self.logToUserDefaults("📝 Session ended - waiting for new audio")
+                } else {
+                    // Log partial results for debugging
+                    if Int.random(in: 0..<20) == 0 {  // Log ~5% of partial results to avoid spam
+                        print("🎤 [BroadcastExtension] Partial (not final): \(transcript)")
+                    }
                 }
             }
 
             if let error = error {
-                print("❌ [BroadcastExtension] Recognition error: \(error.localizedDescription)")
+                let errorCode = (error as NSError).code
+                print("❌ [BroadcastExtension] Recognition error (code \(errorCode)): \(error.localizedDescription)")
 
                 // Save any partial transcript before error
                 if !self.lastTranscript.isEmpty {
+                    print("💾 [BroadcastExtension] Saving partial transcript before error: '\(self.lastTranscript)'")
                     self.saveTranscription(self.lastTranscript)
                     self.lastTranscript = ""
+                } else {
+                    print("⚠️ [BroadcastExtension] Error occurred but no transcript to save")
                 }
 
-                // Restart on error (common for timeout)
-                self.restartRecognition()
+                // Only restart on specific recoverable errors
+                // 216 = cancellation, 203 = end of utterance, 1110 = no speech detected
+                // Don't restart on these as they indicate normal end of session
+                let nonRecoverableErrors = [216, 203, 1110, 301, 1700]
+                if !nonRecoverableErrors.contains(errorCode) {
+                    print("🔄 [BroadcastExtension] Restarting recognition after error")
+                    self.restartRecognition()
+                } else {
+                    print("ℹ️ [BroadcastExtension] Not restarting - normal end of session (code \(errorCode))")
+                }
             }
         }
 
         isRecognizing = true
-        
+
         // Mark that extension STT is active
         if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
             userDefaults.set(true, forKey: "extensionSTTActive")
             userDefaults.synchronize()
         }
-        
-        print("[BroadcastExtension] Speech recognition started")
+
+        logToUserDefaults("✅ Speech recognition started successfully")
     }
 
     private func stopSpeechRecognition() {
@@ -628,10 +677,30 @@ class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func restartRecognition() {
-        // Small delay before restarting
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+        // Ensure we're not recognizing during restart
+        isRecognizing = false
+        recognitionRequest = nil
+        recognitionTask = nil
+
+        // Log restart attempt
+        logToUserDefaults("🔄 Restarting recognition in 0.3s...")
+
+        // Delay before restarting to allow the old session to fully complete
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
+            self?.logToUserDefaults("🔄 Now calling startRecognition()")
             self?.startRecognition()
         }
+    }
+
+    private func logToUserDefaults(_ message: String) {
+        if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+            let timestamp = Date().timeIntervalSince1970
+            userDefaults.set(message, forKey: "extensionLogMessage")
+            userDefaults.set(timestamp, forKey: "extensionLogTime")
+            userDefaults.set("ExtensionSTT", forKey: "extensionLogCategory")
+            userDefaults.synchronize()
+        }
+        print("📱 [BroadcastExtension] \(message)")
     }
 
     private func resetSilenceTimer() {
@@ -646,13 +715,18 @@ class SampleHandler: RPBroadcastSampleHandler {
 
                 // Silence detected - finalize current transcript
                 if !self.lastTranscript.isEmpty {
-                    print("🔇 [BroadcastExtension] Silence timeout - saving transcript")
+                    print("🔇 [BroadcastExtension] ⏱️ Silence timeout (2.5s) - saving transcript: '\(self.lastTranscript)'")
                     self.saveTranscription(self.lastTranscript)
                     self.lastTranscript = ""
 
-                    // End current request and restart
+                    // End current session - will auto-restart on new audio
                     self.recognitionRequest?.endAudio()
-                    self.restartRecognition()
+                    self.recognitionRequest = nil
+                    self.recognitionTask = nil
+                    self.isRecognizing = false
+                    self.logToUserDefaults("📝 Silence timeout - waiting for new audio")
+                } else {
+                    print("🔇 [BroadcastExtension] ⏱️ Silence timeout but no transcript to save")
                 }
             }
         }
@@ -660,19 +734,35 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     private func saveTranscription(_ text: String) {
         let trimmed = text.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { return }
+        guard !trimmed.isEmpty else {
+            print("⚠️ [BroadcastExtension] Attempted to save empty transcript")
+            return
+        }
+
+        // Prevent saving duplicate transcripts within 1 second
+        let now = Date().timeIntervalSince1970
+        if trimmed == lastSavedTranscript && (now - lastSavedTranscriptTime) < 1.0 {
+            print("⚠️ [BroadcastExtension] Skipping duplicate transcript save: \(trimmed)")
+            return
+        }
+
+        lastSavedTranscript = trimmed
+        lastSavedTranscriptTime = now
 
         guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
+            print("❌ [BroadcastExtension] Could not access UserDefaults to save transcript")
             return
         }
 
         // Save transcription for main app to pick up
         // Use a timestamp-based key to allow multiple transcripts
-        let timestamp = Date().timeIntervalSince1970
+        let timestamp = now
         userDefaults.set(trimmed, forKey: "extensionTranscript")
         userDefaults.set(timestamp, forKey: "extensionTranscriptTime")
         userDefaults.set(true, forKey: "hasNewTranscript")
         userDefaults.set(true, forKey: "extensionSTTActive")  // Flag that extension STT is working
+        
+        print("💾 [BroadcastExtension] ✓ Saved transcript to UserDefaults: '\(trimmed)' (time: \(timestamp))")
 
         // Get current frame file paths for Gemini processing
         let framePaths = getCurrentFramePaths()
@@ -713,6 +803,12 @@ class SampleHandler: RPBroadcastSampleHandler {
     }
 
     private func feedAudioToRecognizer(_ sampleBuffer: CMSampleBuffer) {
+        // If not recognizing, start a new recognition session
+        if !isRecognizing {
+            logToUserDefaults("🎤 Starting new recognition session for incoming audio")
+            startRecognition()
+        }
+
         guard isRecognizing else {
             // Log periodically to avoid spam
             if Int.random(in: 0..<1000) == 0 {

@@ -518,9 +518,7 @@ class _HomeScreenState extends State<HomeScreen> with SingleTickerProviderStateM
 
                 // Screen Recording Button (only enabled when chat is active)
                 ControlButton(
-                  icon: appState.isScreenRecordingActive
-                      ? Icons.stop_screen_share
-                      : Icons.screen_share,
+                  icon: Icons.screen_share,
                   label: l10n.shareScreen,
                   backgroundColor: appState.isScreenRecordingActive
                       ? colors.successGreen
