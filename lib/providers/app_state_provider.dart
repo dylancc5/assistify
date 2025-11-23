@@ -456,7 +456,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       final text = event['text'] as String?;
       if (text != null && text.isNotEmpty) {
         // Check if this is TTS garbage that should be discarded
-        if (_discardNextTranscript) {
+        // Only discard when screen sharing is active (to filter out TTS noise from extension)
+        if (_discardNextTranscript && _screenStreamService.isCapturing) {
           debugPrint('🎤 [Speech] Discarding TTS garbage transcript: "$text"');
           _discardNextTranscript = false;
           // Don't add to messages or send to Gemini - just clear the buffer
@@ -651,10 +652,16 @@ Current question/message: $message''';
           notifyListeners();
         });
 
+        // Get the appropriate voice ID based on language
+        final voiceId = _preferences.languageCode == 'zh-Hans'
+            ? _preferences.chineseVoiceId
+            : _preferences.englishVoiceId;
+
         await _ttsService.speak(
           text: response,
           languageCode: _preferences.languageCode,
           slowerSpeech: _preferences.slowerSpeechEnabled,
+          voiceId: voiceId,
         );
 
         // Stop collecting and print TTS stats
@@ -681,8 +688,14 @@ Current question/message: $message''';
           await Future.delayed(const Duration(milliseconds: 200));
           _ignoringSTT = false;
           // The next transcript will be TTS garbage - discard it
-          _discardNextTranscript = true;
-          debugPrint('🎤 [Speech] Will discard next transcript (TTS garbage)');
+          // Only discard when screen sharing is active (to filter out TTS noise from extension)
+          if (_screenStreamService.isCapturing) {
+            _discardNextTranscript = true;
+            debugPrint('🎤 [Speech] Will discard next transcript (TTS garbage)');
+          } else {
+            _discardNextTranscript = false;
+            debugPrint('🎤 [Speech] Not discarding next transcript (normal STT mode)');
+          }
         } else {
           debugPrint('🎤 [Speech] Not restarting STT (chat inactive or mic muted)');
           _ignoringSTT = false;
@@ -700,6 +713,10 @@ Current question/message: $message''';
   Future<void> endChat() async {
     // Stop any TTS playback
     _ttsService.stop();
+    
+    // Cancel TTS audio level subscription
+    _ttsAudioLevelSubscription?.cancel();
+    _ttsAudioLevelSubscription = null;
 
     // Stop screen frame capture if active
     if (_isScreenRecordingActive) {
@@ -720,12 +737,19 @@ Current question/message: $message''';
       _currentMessages.add(message);
     }
 
+    // Cancel all audio-related subscriptions
     _audioLevelSubscription?.cancel();
     _audioLevelSubscription = null;
     _speechEventSubscription?.cancel();
     _speechEventSubscription = null;
+    
+    // Reset all audio-related state
     _audioLevel = 0.0;
+    _audioLevelSamples = [];
+    _ttsAudioLevelSamples = [];
     _isMicrophoneMuted = true;
+    _ignoringSTT = false;
+    _discardNextTranscript = false;
 
     // Save conversation if there are messages
     if (_currentMessages.isNotEmpty && _chatStartTime != null) {

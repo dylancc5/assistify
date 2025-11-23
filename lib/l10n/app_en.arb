@@ -636,6 +636,38 @@
         "type": "int"
       }
     }
+  },
+  "voices": "Voices",
+  "@voices": {
+    "description": "Voices preference title"
+  },
+  "selectVoicesForSpeech": "Select voices for speech output",
+  "@selectVoicesForSpeech": {
+    "description": "Voices preference description"
+  },
+  "voiceSelection": "Voice Selection",
+  "@voiceSelection": {
+    "description": "Voice selection screen title"
+  },
+  "english": "English",
+  "@english": {
+    "description": "English language label"
+  },
+  "chinese": "Chinese",
+  "@chinese": {
+    "description": "Chinese language label"
+  },
+  "noVoicesAvailable": "No voices available",
+  "@noVoicesAvailable": {
+    "description": "Message when no voices are downloaded"
+  },
+  "downloadVoicesInSettings": "Download voices in Settings > Accessibility > Spoken Content > Voices",
+  "@downloadVoicesInSettings": {
+    "description": "Instructions to download voices"
+  },
+  "enhanced": "Enhanced",
+  "@enhanced": {
+    "description": "Enhanced quality voice label"
   }
 }
 

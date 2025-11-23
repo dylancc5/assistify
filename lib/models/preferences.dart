@@ -5,6 +5,8 @@ class UserPreferences {
   final bool highContrastEnabled;
   final bool useSimplifiedChinese;
   final bool showTranscribedText;
+  final String? englishVoiceId;
+  final String? chineseVoiceId;
 
   const UserPreferences({
     this.largeTextEnabled = false,
@@ -12,6 +14,8 @@ class UserPreferences {
     this.highContrastEnabled = false,
     this.useSimplifiedChinese = false,
     this.showTranscribedText = true,
+    this.englishVoiceId,
+    this.chineseVoiceId,
   });
 
   /// Create copy with updated values
@@ -21,6 +25,8 @@ class UserPreferences {
     bool? highContrastEnabled,
     bool? useSimplifiedChinese,
     bool? showTranscribedText,
+    String? englishVoiceId,
+    String? chineseVoiceId,
   }) {
     return UserPreferences(
       largeTextEnabled: largeTextEnabled ?? this.largeTextEnabled,
@@ -28,6 +34,8 @@ class UserPreferences {
       highContrastEnabled: highContrastEnabled ?? this.highContrastEnabled,
       useSimplifiedChinese: useSimplifiedChinese ?? this.useSimplifiedChinese,
       showTranscribedText: showTranscribedText ?? this.showTranscribedText,
+      englishVoiceId: englishVoiceId ?? this.englishVoiceId,
+      chineseVoiceId: chineseVoiceId ?? this.chineseVoiceId,
     );
   }
 
@@ -39,6 +47,8 @@ class UserPreferences {
       'highContrastEnabled': highContrastEnabled,
       'useSimplifiedChinese': useSimplifiedChinese,
       'showTranscribedText': showTranscribedText,
+      'englishVoiceId': englishVoiceId,
+      'chineseVoiceId': chineseVoiceId,
     };
   }
 
@@ -50,6 +60,8 @@ class UserPreferences {
       highContrastEnabled: json['highContrastEnabled'] as bool? ?? false,
       useSimplifiedChinese: json['useSimplifiedChinese'] as bool? ?? false,
       showTranscribedText: json['showTranscribedText'] as bool? ?? true,
+      englishVoiceId: json['englishVoiceId'] as String?,
+      chineseVoiceId: json['chineseVoiceId'] as String?,
     );
   }
 

@@ -112,6 +112,19 @@ GUIDANCE STYLE:
         _activeRequestId = null;
         final responseText = response.text;
 
+        // Log token usage for cost estimation
+        try {
+          final usage = response.usageMetadata;
+          if (usage != null) {
+            final promptTokens = usage.promptTokenCount ?? 0;
+            final candidatesTokens = usage.candidatesTokenCount ?? 0;
+            final totalTokens = usage.totalTokenCount ?? 0;
+            debugPrint('💰 [Token Usage] Prompt: $promptTokens | Response: $candidatesTokens | Total: $totalTokens');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [Token Usage] Could not read usage metadata: $e');
+        }
+
         // Reset failure counter on success
         _consecutiveFailures = 0;
 
@@ -232,6 +245,20 @@ GUIDANCE STYLE:
 
         _activeRequestId = null;
         final responseText = response.text;
+
+        // Log token usage for cost estimation
+        try {
+          final usage = response.usageMetadata;
+          if (usage != null) {
+            final promptTokens = usage.promptTokenCount ?? 0;
+            final candidatesTokens = usage.candidatesTokenCount ?? 0;
+            final totalTokens = usage.totalTokenCount ?? 0;
+            final imageCount = screenshots.length;
+            debugPrint('💰 [Token Usage] Prompt: $promptTokens | Response: $candidatesTokens | Total: $totalTokens | Images: $imageCount');
+          }
+        } catch (e) {
+          debugPrint('⚠️ [Token Usage] Could not read usage metadata: $e');
+        }
 
         // Reset failure counter on success
         _consecutiveFailures = 0;

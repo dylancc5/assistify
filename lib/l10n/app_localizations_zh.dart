@@ -535,4 +535,28 @@ class AppLocalizationsZh extends AppLocalizations {
   String tapToViewMessages(int count) {
     return '点击查看 $count 条消息';
   }
+
+  @override
+  String get voices => '语音';
+
+  @override
+  String get selectVoicesForSpeech => '选择语音输出的声音';
+
+  @override
+  String get voiceSelection => '语音选择';
+
+  @override
+  String get english => '英语';
+
+  @override
+  String get chinese => '中文';
+
+  @override
+  String get noVoicesAvailable => '没有可用的语音';
+
+  @override
+  String get downloadVoicesInSettings => '在设置 > 辅助功能 > 朗读内容 > 声音中下载语音';
+
+  @override
+  String get enhanced => '增强';
 }

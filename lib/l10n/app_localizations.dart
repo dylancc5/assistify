@@ -1057,6 +1057,54 @@ abstract class AppLocalizations {
   /// In en, this message translates to:
   /// **'Tap to view {count} messages'**
   String tapToViewMessages(int count);
+
+  /// Voices preference title
+  ///
+  /// In en, this message translates to:
+  /// **'Voices'**
+  String get voices;
+
+  /// Voices preference description
+  ///
+  /// In en, this message translates to:
+  /// **'Select voices for speech output'**
+  String get selectVoicesForSpeech;
+
+  /// Voice selection screen title
+  ///
+  /// In en, this message translates to:
+  /// **'Voice Selection'**
+  String get voiceSelection;
+
+  /// English language label
+  ///
+  /// In en, this message translates to:
+  /// **'English'**
+  String get english;
+
+  /// Chinese language label
+  ///
+  /// In en, this message translates to:
+  /// **'Chinese'**
+  String get chinese;
+
+  /// Message when no voices are downloaded
+  ///
+  /// In en, this message translates to:
+  /// **'No voices available'**
+  String get noVoicesAvailable;
+
+  /// Instructions to download voices
+  ///
+  /// In en, this message translates to:
+  /// **'Download voices in Settings > Accessibility > Spoken Content > Voices'**
+  String get downloadVoicesInSettings;
+
+  /// Enhanced quality voice label
+  ///
+  /// In en, this message translates to:
+  /// **'Enhanced'**
+  String get enhanced;
 }
 
 class _AppLocalizationsDelegate

@@ -8,6 +8,7 @@ import '../utils/localization_helper.dart';
 import 'history_screen.dart';
 import 'privacy_policy_screen.dart';
 import 'terms_of_service_screen.dart';
+import 'voice_selection_screen.dart';
 
 /// Settings screen with preferences and options
 class SettingsScreen extends StatelessWidget {
@@ -226,6 +227,22 @@ class SettingsScreen extends StatelessWidget {
                   onChanged: (value) {
                     appState.updatePreferences(
                       prefs.copyWith(showTranscribedText: value),
+                    );
+                  },
+                  colors: colors,
+                ),
+
+                Divider(color: colors.divider, height: 1),
+
+                // Voices Selection
+                _buildLinkItem(
+                  icon: Icons.record_voice_over,
+                  title: l10n.voices,
+                  onTap: () {
+                    Navigator.of(context).push(
+                      MaterialPageRoute(
+                        builder: (context) => const VoiceSelectionScreen(),
+                      ),
                     );
                   },
                   colors: colors,

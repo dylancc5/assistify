@@ -1,9 +1,7 @@
 // TODO: Improve prompt engineering for better personality and responses
 //       Should be aware of its own features + limitations,
 //       note when screen capture ends, etc.
-// FIXME: Agent is still buggy and skips every other message on normal mode + wrong voice!
-// FIXME: Appears to require app to open to foregroud every so often to work?
-// FIXME: Inference requires 10+ seconds??
+// FIXME: Talking to itself + doesn't handle start screen share gracefully
 
 // TODO: Replace Gemini with Baidu ERNIE (must test!)
 // TODO: Need to fine tune model?

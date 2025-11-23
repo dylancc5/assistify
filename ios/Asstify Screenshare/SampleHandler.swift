@@ -36,7 +36,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     // Silence detection for audio
     private var consecutiveSilentChunks: Int = 0
-    private let silenceThresholdChunks: Int = 5  // 5 chunks = 2.5 seconds of silence
+    private let silenceThresholdChunks: Int = 3  // 3 chunks = 1.5 seconds of silence
 
     // Speech recognition in extension
     private var speechRecognizer: SFSpeechRecognizer?
@@ -45,7 +45,7 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var isRecognizing = false
     private var lastTranscript = ""
     private var silenceTimer: Timer?
-    private let silenceTimeout: TimeInterval = 2.5  // Same as chunk-based silence detection
+    private let silenceTimeout: TimeInterval = 1.5  // Same as chunk-based silence detection
     private var lastSavedTranscript: String = ""
     private var lastSavedTranscriptTime: TimeInterval = 0
     
@@ -901,7 +901,7 @@ class SampleHandler: RPBroadcastSampleHandler {
 
                 // Silence detected - finalize current transcript
                 if !self.lastTranscript.isEmpty {
-                    print("🔇 [BroadcastExtension] ⏱️ Silence timeout (2.5s) - saving transcript: '\(self.lastTranscript)'")
+                    print("🔇 [BroadcastExtension] ⏱️ Silence timeout (1.5s) - saving transcript: '\(self.lastTranscript)'")
                     self.saveTranscription(self.lastTranscript)
                     self.lastTranscript = ""
 

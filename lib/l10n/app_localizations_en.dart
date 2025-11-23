@@ -575,4 +575,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String tapToViewMessages(int count) {
     return 'Tap to view $count messages';
   }
+
+  @override
+  String get voices => 'Voices';
+
+  @override
+  String get selectVoicesForSpeech => 'Select voices for speech output';
+
+  @override
+  String get voiceSelection => 'Voice Selection';
+
+  @override
+  String get english => 'English';
+
+  @override
+  String get chinese => 'Chinese';
+
+  @override
+  String get noVoicesAvailable => 'No voices available';
+
+  @override
+  String get downloadVoicesInSettings =>
+      'Download voices in Settings > Accessibility > Spoken Content > Voices';
+
+  @override
+  String get enhanced => 'Enhanced';
 }

@@ -180,6 +180,14 @@
   "feedbackRatingLabel": "评分（可选）",
   "feedbackSubmit": "提交",
   "feedbackSent": "感谢您的反馈！",
-  "tapToViewMessages": "点击查看 {count} 条消息"
+  "tapToViewMessages": "点击查看 {count} 条消息",
+  "voices": "语音",
+  "selectVoicesForSpeech": "选择语音输出的声音",
+  "voiceSelection": "语音选择",
+  "english": "英语",
+  "chinese": "中文",
+  "noVoicesAvailable": "没有可用的语音",
+  "downloadVoicesInSettings": "在设置 > 辅助功能 > 朗读内容 > 声音中下载语音",
+  "enhanced": "增强"
 }
 

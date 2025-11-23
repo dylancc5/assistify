@@ -23,16 +23,19 @@ class TTSService {
   /// Speak the given text
   /// [languageCode] should be 'en-US' or 'zh-Hans'
   /// [slowerSpeech] sets a slower speech rate if true
+  /// [voiceId] optional voice identifier to use a specific voice
   Future<bool> speak({
     required String text,
     required String languageCode,
     bool slowerSpeech = false,
+    String? voiceId,
   }) async {
     try {
       final result = await _methodChannel.invokeMethod<bool>('speak', {
         'text': text,
         'languageCode': languageCode,
         'slowerSpeech': slowerSpeech,
+        'voiceId': voiceId,
       });
       return result ?? false;
     } catch (e) {
@@ -97,6 +100,40 @@ class TTSService {
     } catch (e) {
       debugPrint('Error opening voice settings: $e');
       return false;
+    }
+  }
+
+  /// Get all available (downloaded) voices for English and Chinese
+  /// Returns a map with 'english' and 'chinese' lists of voice objects
+  Future<Map<String, List<Map<String, String>>>> getAvailableVoices() async {
+    try {
+      final result = await _methodChannel.invokeMethod('getAvailableVoices');
+      if (result is Map) {
+        final englishVoices = (result['english'] as List?)
+            ?.map((v) => Map<String, String>.from({
+                  'id': v['id']?.toString() ?? '',
+                  'name': v['name']?.toString() ?? '',
+                  'quality': v['quality']?.toString() ?? 'default',
+                }))
+            .toList() ?? [];
+
+        final chineseVoices = (result['chinese'] as List?)
+            ?.map((v) => Map<String, String>.from({
+                  'id': v['id']?.toString() ?? '',
+                  'name': v['name']?.toString() ?? '',
+                  'quality': v['quality']?.toString() ?? 'default',
+                }))
+            .toList() ?? [];
+
+        return {
+          'english': englishVoices,
+          'chinese': chineseVoices,
+        };
+      }
+      return {'english': [], 'chinese': []};
+    } catch (e) {
+      debugPrint('Error getting available voices: $e');
+      return {'english': [], 'chinese': []};
     }
   }
 

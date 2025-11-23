@@ -45,7 +45,7 @@ import Speech
   private var rawAudioURL: URL?
   private var rawAudioSilenceTimer: Timer?
   private var lastAudioLevel: Float = 0.0
-  private let rawAudioSilenceThreshold: TimeInterval = 2.5
+  private let rawAudioSilenceThreshold: TimeInterval = 1.5
 
   // Silence detection properties
   private var silenceTimer: Timer?
@@ -53,7 +53,7 @@ import Speech
   private var currentLanguageCode: String = "en-US"  // Track current language for restart
   private var speechEventChannel: FlutterEventChannel?
   private var speechEventSink: FlutterEventSink?
-  private let silenceThreshold: TimeInterval = 2.5  // seconds of silence to trigger segment end
+  private let silenceThreshold: TimeInterval = 1.5  // seconds of silence to trigger segment end
 
   // TTS properties
   private var ttsMethodChannel: FlutterMethodChannel?
@@ -248,7 +248,8 @@ import Speech
            let text = args["text"] as? String,
            let languageCode = args["languageCode"] as? String {
           let slowerSpeech = args["slowerSpeech"] as? Bool ?? false
-          self.speakText(text: text, languageCode: languageCode, slowerSpeech: slowerSpeech, result: result)
+          let voiceId = args["voiceId"] as? String
+          self.speakText(text: text, languageCode: languageCode, slowerSpeech: slowerSpeech, voiceId: voiceId, result: result)
         } else {
           result(FlutterError(code: "INVALID_ARGS", message: "Missing required arguments", details: nil))
         }
@@ -265,6 +266,8 @@ import Speech
         }
       case "openVoiceSettings":
         self.openVoiceSettings(result: result)
+      case "getAvailableVoices":
+        self.getAvailableVoices(result: result)
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -1463,8 +1466,30 @@ import Speech
     // Mark that user no longer wants to be listening
     shouldBeListening = false
 
+    // Stop TTS if speaking (immediate stop for privacy)
+    if let synthesizer = speechSynthesizer, synthesizer.isSpeaking {
+      print("🔊 [TTS] Stopping TTS playback on end chat")
+      synthesizer.stopSpeaking(at: .immediate)
+    }
+
     // Stop extension transcript monitoring if active
     stopExtensionTranscriptMonitoring()
+
+    // Stop raw audio recording if active
+    if isRecordingRawAudio {
+      print("🎙️ [RawAudio] Stopping raw audio recording on end chat")
+      rawAudioSilenceTimer?.invalidate()
+      rawAudioSilenceTimer = nil
+      rawAudioSilenceEndTimer?.invalidate()
+      rawAudioSilenceEndTimer = nil
+      audioRecorder?.stop()
+      isRecordingRawAudio = false
+      rawAudioURL = nil
+    }
+
+    // Stop broadcast audio monitoring if active
+    broadcastAudioMonitorTimer?.invalidate()
+    broadcastAudioMonitorTimer = nil
 
     // First, finalize the current recognition task to get the final transcription
     recognitionRequest?.endAudio()
@@ -1486,6 +1511,19 @@ import Speech
       self.stopAudioEngine()
       self.currentTranscript = ""
       self.lastTranscriptLength = 0
+
+      // Deactivate audio session to release all audio resources
+      // This ensures no audio sessions remain active after ending chat
+      DispatchQueue.global(qos: .userInitiated).async { [weak self] in
+        guard let self = self else { return }
+        do {
+          let audioSession = AVAudioSession.sharedInstance()
+          try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+          print("🔇 [Audio] Audio session deactivated on end chat")
+        } catch {
+          print("⚠️ [Audio] Error deactivating audio session: \(error.localizedDescription)")
+        }
+      }
 
       result(mainAppTranscript)
     }
@@ -2381,6 +2419,14 @@ import Speech
         return
       }
 
+      // Log token usage for cost estimation
+      if let usageMetadata = json["usageMetadata"] as? [String: Any] {
+        let promptTokens = usageMetadata["promptTokenCount"] as? Int ?? 0
+        let candidatesTokens = usageMetadata["candidatesTokenCount"] as? Int ?? 0
+        let totalTokens = usageMetadata["totalTokenCount"] as? Int ?? 0
+        print("💰 [Token Usage] Prompt: \(promptTokens) | Response: \(candidatesTokens) | Total: \(totalTokens) | Images: \(images.count)")
+      }
+
       print("🤖 [BackgroundGemini] Got response: \(text.prefix(100))...")
       completion(text)
     }.resume()
@@ -3234,7 +3280,7 @@ import Speech
 
   // MARK: - TTS Methods
 
-  private func speakText(text: String, languageCode: String, slowerSpeech: Bool, result: @escaping FlutterResult) {
+  private func speakText(text: String, languageCode: String, slowerSpeech: Bool, voiceId: String?, result: @escaping FlutterResult) {
     guard let synthesizer = speechSynthesizer else {
       result(FlutterError(code: "TTS_UNAVAILABLE", message: "Speech synthesizer not available", details: nil))
       return
@@ -3261,8 +3307,31 @@ import Speech
     // Select best available voice for the language
     let voices = AVSpeechSynthesisVoice.speechVoices().filter { $0.language == voiceLanguage }
 
+    // Debug: Log all available voices
+    print("🔊 [TTS] Available voices for \(voiceLanguage):")
+    for voice in voices {
+      print("  - \(voice.name) (id: \(voice.identifier), quality: \(voice.quality.rawValue))")
+    }
+
     let selectedVoice: AVSpeechSynthesisVoice?
-    if languageCode == "zh-Hans" {
+
+    // First, try to use the user-selected voice if provided
+    if let voiceId = voiceId, !voiceId.isEmpty {
+      selectedVoice = voices.first { $0.identifier == voiceId }
+      if selectedVoice != nil {
+        print("🔊 [TTS] Using user-selected voice: \(voiceId)")
+      } else {
+        print("⚠️ [TTS] User-selected voice not found: \(voiceId), falling back to default selection")
+      }
+    } else {
+      selectedVoice = nil
+    }
+
+    // If no user-selected voice or it wasn't found, use automatic selection
+    let finalVoice: AVSpeechSynthesisVoice?
+    if selectedVoice != nil {
+      finalVoice = selectedVoice
+    } else if languageCode == "zh-Hans" {
       // Prefer Ting-Ting (enhanced), otherwise fall back to other enhanced Mandarin voices
       let tingTing = voices.first { voice in
         let name = voice.name.lowercased()
@@ -3272,28 +3341,42 @@ import Speech
         voice.name.lowercased().contains("ting-ting")
       }
       let anyEnhanced = voices.first { $0.quality == .enhanced }
-      selectedVoice = tingTing ?? tingTingDefault ?? anyEnhanced ?? voices.first
+      finalVoice = tingTing ?? tingTingDefault ?? anyEnhanced ?? voices.first
     } else {
-      // Prefer Siri Voice 4 (com.apple.voice.compact.en-US.Samantha), then other Siri voices, then Samantha, then default
+      // Prefer Siri Voice 4, then other Siri voices, then Samantha, then default
       let siriVoice4 = voices.first { voice in
-        // Siri Voice 4 identifier pattern
-        voice.identifier.contains("siri") && voice.identifier.contains("voice4")
+        let id = voice.identifier.lowercased()
+        let name = voice.name.lowercased()
+        return id.contains("sirivoice4") ||
+               (id.contains("siri") && id.contains("voice4")) ||
+               name.contains("siri voice 4") ||
+               name.contains("siri voice4") ||
+               id.contains("com.apple.voice.compact.en-us.sirivoice4")
       }
-      let anySiri = voices.first { $0.identifier.lowercased().contains("siri") || $0.name.lowercased().contains("siri") }
+
+      // Fallback to any Siri voice
+      let anySiri = voices.first { voice in
+        let id = voice.identifier.lowercased()
+        let name = voice.name.lowercased()
+        return id.contains("siri") || name.contains("siri")
+      }
+
+      // Fallback to Samantha
       let samantha = voices.first {
         let name = $0.name.lowercased()
         let id = $0.identifier.lowercased()
         return name.contains("samantha") || id.contains("samantha")
       }
-      selectedVoice = siriVoice4 ?? anySiri ?? samantha ?? voices.first
+
+      finalVoice = siriVoice4 ?? anySiri ?? samantha ?? voices.first
     }
 
-    if let voice = selectedVoice {
+    if let voice = finalVoice {
       utterance.voice = voice
-      print("Using voice: \(voice.identifier)")
+      print("🔊 [TTS] Selected voice: \(voice.name) (id: \(voice.identifier), quality: \(voice.quality.rawValue))")
     } else {
       utterance.voice = AVSpeechSynthesisVoice(language: voiceLanguage)
-      print("Using default voice for \(voiceLanguage)")
+      print("⚠️ [TTS] Using default voice for \(voiceLanguage) - no matching voice found")
     }
 
     // Set speech rate
@@ -3436,6 +3519,33 @@ import Speech
     } else {
       result(false)
     }
+  }
+
+  private func getAvailableVoices(result: @escaping FlutterResult) {
+    let allVoices = AVSpeechSynthesisVoice.speechVoices()
+
+    // Get English voices (en-US)
+    let englishVoices = allVoices.filter { $0.language == "en-US" }.map { voice -> [String: Any] in
+      return [
+        "id": voice.identifier,
+        "name": voice.name,
+        "quality": voice.quality == .enhanced ? "enhanced" : "default"
+      ]
+    }
+
+    // Get Chinese voices (zh-CN for Simplified Chinese)
+    let chineseVoices = allVoices.filter { $0.language == "zh-CN" }.map { voice -> [String: Any] in
+      return [
+        "id": voice.identifier,
+        "name": voice.name,
+        "quality": voice.quality == .enhanced ? "enhanced" : "default"
+      ]
+    }
+
+    result([
+      "english": englishVoices,
+      "chinese": chineseVoices
+    ])
   }
 }
 
