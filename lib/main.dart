@@ -1,7 +1,6 @@
 // TODO: Improve prompt engineering for better personality and responses
 //       Should be aware of its own features + limitations,
 //       note when screen capture ends, etc.
-// FIXME: Talking to itself + doesn't handle start screen share gracefully
 
 // TODO: Replace Gemini with Baidu ERNIE (must test!)
 // TODO: Need to fine tune model?

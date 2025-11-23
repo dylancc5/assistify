@@ -83,8 +83,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   // Flag to ignore STT input while agent is speaking
   bool _ignoringSTT = false;
-  // Flag to discard the next transcript (it's TTS garbage)
-  bool _discardNextTranscript = false;
+  // Alternating discard flag for broadcast mode - discards every other message to filter self-listening
+  bool _shouldDiscardNextBroadcastMessage = false;
 
   // Getters for enhanced voice prompt
   bool get shouldPromptForEnhancedVoice => _shouldPromptForEnhancedVoice;
@@ -115,6 +115,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   void _onBroadcastStopped() {
     debugPrint('📺 [AppState] Broadcast stopped externally, updating UI state');
     _isScreenRecordingActive = false;
+    _shouldDiscardNextBroadcastMessage = false;
     notifyListeners();
   }
 
@@ -250,6 +251,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       // Stop frame capture for Gemini context
       await _screenStreamService.stopCapture();
       _isScreenRecordingActive = false;
+      _shouldDiscardNextBroadcastMessage = false;
       notifyListeners();
       return;
     }
@@ -295,6 +297,18 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Set broadcast context for background Gemini processing
     if (success) {
       await _updateBroadcastContext();
+
+      // Initialize alternating discard flag based on whether there's buffered text
+      // If there's already text buffered, we discard it first (it's likely TTS garbage)
+      // Otherwise, the first message is valid
+      final currentTranscript = await _speechService.getTranscript();
+      if (currentTranscript.isNotEmpty) {
+        _shouldDiscardNextBroadcastMessage = true;
+        debugPrint('🎤 [Broadcast] Started with buffered text - will discard first message');
+      } else {
+        _shouldDiscardNextBroadcastMessage = false;
+        debugPrint('🎤 [Broadcast] Started clean - first message is valid');
+      }
     }
 
     notifyListeners();
@@ -455,13 +469,16 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
       final text = event['text'] as String?;
       if (text != null && text.isNotEmpty) {
-        // Check if this is TTS garbage that should be discarded
-        // Only discard when screen sharing is active (to filter out TTS noise from extension)
-        if (_discardNextTranscript && _screenStreamService.isCapturing) {
-          debugPrint('🎤 [Speech] Discarding TTS garbage transcript: "$text"');
-          _discardNextTranscript = false;
-          // Don't add to messages or send to Gemini - just clear the buffer
-          return;
+        // Alternating discard logic for broadcast mode - discards every other message
+        // to filter out the voice agent listening to itself
+        if (_screenStreamService.isCapturing) {
+          if (_shouldDiscardNextBroadcastMessage) {
+            debugPrint('🎤 [Speech] Discarding message (broadcast self-listen filter): "$text"');
+            _shouldDiscardNextBroadcastMessage = false;  // Next message is valid
+            return;
+          } else {
+            _shouldDiscardNextBroadcastMessage = true;  // After processing, discard next one
+          }
         }
 
         // Stop any TTS playback when user starts speaking
@@ -687,15 +704,6 @@ Current question/message: $message''';
           // Additional delay to let STT fully initialize and audio session settle before accepting input
           await Future.delayed(const Duration(milliseconds: 200));
           _ignoringSTT = false;
-          // The next transcript will be TTS garbage - discard it
-          // Only discard when screen sharing is active (to filter out TTS noise from extension)
-          if (_screenStreamService.isCapturing) {
-            _discardNextTranscript = true;
-            debugPrint('🎤 [Speech] Will discard next transcript (TTS garbage)');
-          } else {
-            _discardNextTranscript = false;
-            debugPrint('🎤 [Speech] Not discarding next transcript (normal STT mode)');
-          }
         } else {
           debugPrint('🎤 [Speech] Not restarting STT (chat inactive or mic muted)');
           _ignoringSTT = false;
@@ -749,7 +757,7 @@ Current question/message: $message''';
     _ttsAudioLevelSamples = [];
     _isMicrophoneMuted = true;
     _ignoringSTT = false;
-    _discardNextTranscript = false;
+    _shouldDiscardNextBroadcastMessage = false;
 
     // Save conversation if there are messages
     if (_currentMessages.isNotEmpty && _chatStartTime != null) {
