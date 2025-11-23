@@ -234,12 +234,13 @@ class ScreenStreamService {
     }
   }
 
-  /// Set broadcast context for background Gemini processing
+  /// Set broadcast context for background Baidu processing
   /// This includes chat history, conversation IDs, and API credentials
   Future<bool> setBroadcastContext({
     required List<Map<String, String>> chatHistory,
     required List<String> conversationIds,
-    required String geminiApiKey,
+    required String baiduApiKey,
+    required String baiduSecretKey,
     required String supabaseUrl,
     required String supabaseAnonKey,
   }) async {
@@ -247,7 +248,8 @@ class ScreenStreamService {
       final bool success = await platform.invokeMethod('setBroadcastContext', {
         'chatHistory': chatHistory,
         'conversationIds': conversationIds,
-        'geminiApiKey': geminiApiKey,
+        'baiduApiKey': baiduApiKey,
+        'baiduSecretKey': baiduSecretKey,
         'supabaseUrl': supabaseUrl,
         'supabaseAnonKey': supabaseAnonKey,
       });
