@@ -67,9 +67,12 @@ import Speech
   private var nativeLogEventChannel: FlutterEventChannel?
   private var nativeLogEventSink: FlutterEventSink?
 
-  // Background Gemini processing properties
-  private var backgroundGeminiTask: UIBackgroundTaskIdentifier = .invalid
-  private var geminiApiKey: String?
+  // Background Baidu processing properties
+  private var backgroundBaiduTask: UIBackgroundTaskIdentifier = .invalid
+  private var baiduApiKey: String?
+  private var baiduSecretKey: String?
+  private var baiduAccessToken: String?
+  private var baiduTokenExpiry: Date?
   private var supabaseUrl: String?
   private var supabaseAnonKey: String?
   private var chatHistory: [[String: String]] = []
@@ -78,7 +81,7 @@ import Speech
   private var activeRequestId: String?
   
   // Memory warning safety flags
-  private var isProcessingGeminiRequest = false
+  private var isProcessingBaiduRequest = false
   private var isSamplingFrames = false
   
   // Concurrent queue for UserDefaults operations
@@ -148,14 +151,15 @@ import Speech
         result(count)
       case "setBroadcastContext":
         if let args = call.arguments as? [String: Any] {
-          self.geminiApiKey = args["geminiApiKey"] as? String
+          self.baiduApiKey = args["baiduApiKey"] as? String
+          self.baiduSecretKey = args["baiduSecretKey"] as? String
           self.supabaseUrl = args["supabaseUrl"] as? String
           self.supabaseAnonKey = args["supabaseAnonKey"] as? String
           self.conversationIds = args["conversationIds"] as? [String] ?? []
           if let historyData = args["chatHistory"] as? [[String: String]] {
             self.chatHistory = historyData
           }
-          print("📱 [BackgroundGemini] Broadcast context set - \(self.chatHistory.count) messages, \(self.conversationIds.count) conversations")
+          print("📱 [BackgroundBaidu] Broadcast context set - \(self.chatHistory.count) messages, \(self.conversationIds.count) conversations")
           result(true)
         } else {
           result(FlutterError(code: "INVALID_ARGS", message: "Invalid arguments for setBroadcastContext", details: nil))
@@ -304,7 +308,7 @@ import Speech
     print("⚠️ [Memory] Memory warning received - cleaning up")
     
     // Only cleanup if not processing/sampling
-    guard !isProcessingGeminiRequest && !isSamplingFrames else {
+    guard !isProcessingBaiduRequest && !isSamplingFrames else {
       print("⚠️ [Memory] Skipping cleanup - active operations in progress")
       return
     }
@@ -354,7 +358,7 @@ import Speech
     
     // Critical cleanup (synchronous)
     cleanupGroup.enter()
-    endBackgroundGeminiTask()
+    endBackgroundBaiduTask()
     stopBackgroundGeminiPolling()
     
     // Invalidate all timers
@@ -1892,7 +1896,7 @@ import Speech
 
     // Stop background Gemini polling if it was running
     stopBackgroundGeminiPolling()
-    endBackgroundGeminiTask()
+    endBackgroundBaiduTask()
 
     // DON'T clear geminiRequestPending here - let Dart's _checkBackgroundGeminiResponse() read it first
     // The timestamp-based deduplication (lastProcessedRequestTime) prevents re-processing
@@ -1979,10 +1983,10 @@ import Speech
     print("🤖 [BackgroundGemini] Starting polling (will process requests after \(pollingStartTime))")
 
     // Start background task
-    backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
-      print("🤖 [BackgroundGemini] Background task expiring - stopping polling")
+    backgroundBaiduTask = UIApplication.shared.beginBackgroundTask(withName: "BaiduAPICall") { [weak self] in
+      print("🤖 [BackgroundBaidu] Background task expiring - stopping polling")
       self?.stopBackgroundGeminiPolling()
-      self?.endBackgroundGeminiTask()
+      self?.endBackgroundBaiduTask()
     }
 
     print("🤖 [BackgroundGemini] Background task started - polling for pending request (every 500ms)")
@@ -2070,35 +2074,35 @@ import Speech
       print("🤖 [BackgroundGemini] ✓ Found pending Gemini request (time: \(requestTime)) - starting background task")
 
       // Start background task
-      self.backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
-        print("🤖 [BackgroundGemini] Background task expiring")
-        self?.endBackgroundGeminiTask()
+      self.backgroundBaiduTask = UIApplication.shared.beginBackgroundTask(withName: "BaiduAPICall") { [weak self] in
+        print("🤖 [BackgroundBaidu] Background task expiring")
+        self?.endBackgroundBaiduTask()
       }
 
       // Process on main thread
       DispatchQueue.main.async {
         self.processGeminiRequest(transcript: trimmedTranscript, framePaths: framePaths) { success in
-          print("🤖 [BackgroundGemini] Request completed - success: \(success)")
-          self.endBackgroundGeminiTask()
+          print("🤖 [BackgroundBaidu] Request completed - success: \(success)")
+          self.endBackgroundBaiduTask()
         }
       }
     }
   }
 
-  private func endBackgroundGeminiTask() {
-    if backgroundGeminiTask != .invalid {
-      UIApplication.shared.endBackgroundTask(backgroundGeminiTask)
-      backgroundGeminiTask = .invalid
+  private func endBackgroundBaiduTask() {
+    if backgroundBaiduTask != .invalid {
+      UIApplication.shared.endBackgroundTask(backgroundBaiduTask)
+      backgroundBaiduTask = .invalid
     }
   }
 
   private func processGeminiRequest(transcript: String, framePaths: [String], completion: @escaping (Bool) -> Void) {
     // Set flag to prevent cleanup during processing
-    isProcessingGeminiRequest = true
-    defer { isProcessingGeminiRequest = false }
+    isProcessingBaiduRequest = true
+    defer { isProcessingBaiduRequest = false }
     
-    guard let apiKey = geminiApiKey else {
-      print("⚠️ [BackgroundGemini] No API key available - did you call setBroadcastContext?")
+    guard baiduApiKey != nil && baiduSecretKey != nil else {
+      print("⚠️ [BackgroundBaidu] No API credentials available - did you call setBroadcastContext?")
       completion(false)
       return
     }
@@ -2205,10 +2209,10 @@ import Speech
         print("🤖 [BackgroundGemini] No RAG context available - using raw transcript")
       }
 
-      print("🤖 [BackgroundGemini] Step 3/4: Calling Gemini API with \(self.chatHistory.count) history messages...")
+      print("🤖 [BackgroundBaidu] Step 3/4: Calling Baidu API with \(self.chatHistory.count) history messages...")
 
-      // Make Gemini API call
-      self.callGeminiAPI(message: augmentedMessage, images: imageDataArray, apiKey: apiKey) { [weak self] response in
+      // Make Baidu API call
+      self.callBaiduAPI(message: augmentedMessage, images: imageDataArray) { [weak self] response in
         guard let self = self else { return }
         // Check if this request is still active
         guard self.activeRequestId == requestId else {
@@ -2218,7 +2222,7 @@ import Speech
         }
         
         if let response = response {
-          print("🤖 [BackgroundGemini] ✓ Gemini API call successful - response length: \(response.count)")
+          print("🤖 [BackgroundBaidu] ✓ Baidu API call successful - response length: \(response.count)")
 
           // Save response for Flutter to pick up
           if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
@@ -2230,14 +2234,14 @@ import Speech
             print("🤖 [BackgroundGemini] Saved response to UserDefaults for Flutter sync")
           }
 
-          print("🤖 [BackgroundGemini] Step 4/4: Speaking response in background...")
+          print("🤖 [BackgroundBaidu] Step 4/4: Speaking response in background...")
 
           // Speak the response immediately (TTS works in background)
           self.speakInBackground(text: response)
 
           wrappedCompletion(true)
         } else {
-          print("⚠️ [BackgroundGemini] Gemini API call failed")
+          print("⚠️ [BackgroundBaidu] Baidu API call failed")
           wrappedCompletion(false)
         }
       }
@@ -2325,108 +2329,153 @@ import Speech
     }.resume()
   }
 
-  private func callGeminiAPI(message: String, images: [Data], apiKey: String, completion: @escaping (String?) -> Void) {
-    let url = URL(string: "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=\(apiKey)")!
+  private func refreshBaiduAccessToken(completion: @escaping (String?) -> Void) {
+    guard let apiKey = baiduApiKey, let secretKey = baiduSecretKey else {
+      print("⚠️ [BackgroundBaidu] Missing API credentials")
+      completion(nil)
+      return
+    }
+    
+    let url = URL(string: "https://aip.baidubce.com/oauth/2.0/token")!
     var request = URLRequest(url: url)
     request.httpMethod = "POST"
-    request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-
-    // Build parts array
-    var parts: [[String: Any]] = []
-
-    // Add images
-    for imageData in images {
-      let base64 = imageData.base64EncodedString()
-      parts.append([
-        "inline_data": [
-          "mime_type": "image/jpeg",
-          "data": base64
-        ]
-      ])
-    }
-
-    // Add text
-    var textContent = message
-    if !images.isEmpty {
-      textContent = "These are screenshots from the screen in chronological order. Use them as visual context to understand what the user is looking at.\n\n\(message)"
-    }
-    parts.append(["text": textContent])
-
-    // Build request body with chat history
-    var contents: [[String: Any]] = []
-
-    // Add chat history
-    for historyItem in chatHistory {
-      if let role = historyItem["role"], let content = historyItem["content"] {
-        contents.append([
-          "role": role == "user" ? "user" : "model",
-          "parts": [["text": content]]
-        ])
-      }
-    }
-
-    // Add current message
-    contents.append([
-      "role": "user",
-      "parts": parts
-    ])
-
-    let systemInstruction = """
-    You are Assistify, a helpful and friendly voice assistant designed to answer questions quickly and concisely.
-
-    Key guidelines:
-    - Keep responses brief and conversational (1-3 sentences when possible)
-    - Speak naturally as if having a conversation
-    - Be direct and get to the point quickly
-    - When given screenshots, analyze them to help answer questions about what the user is viewing
-    - If you need clarification, ask one simple question
-    - Use a warm, friendly tone
-    """
-
-    let body: [String: Any] = [
-      "contents": contents,
-      "systemInstruction": ["parts": [["text": systemInstruction]]],
-      "generationConfig": [
-        "temperature": 0.4,
-        "maxOutputTokens": 1024
-      ]
-    ]
-
-    request.httpBody = try? JSONSerialization.data(withJSONObject: body)
-
-    // Use URLSession with timeout configuration
-    let config = URLSessionConfiguration.default
-    config.timeoutIntervalForRequest = 20.0  // 20s for request
-    config.timeoutIntervalForResource = 25.0  // 25s total
-    let urlSession = URLSession(configuration: config)
-
-    urlSession.dataTask(with: request) { data, response, error in
+    request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+    
+    let bodyString = "grant_type=client_credentials&client_id=\(apiKey)&client_secret=\(secretKey)"
+    request.httpBody = bodyString.data(using: .utf8)
+    
+    URLSession.shared.dataTask(with: request) { data, response, error in
       guard let data = data,
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
-            let candidates = json["candidates"] as? [[String: Any]],
-            let firstCandidate = candidates.first,
-            let content = firstCandidate["content"] as? [String: Any],
-            let responseParts = content["parts"] as? [[String: Any]],
-            let text = responseParts.first?["text"] as? String else {
-        print("🤖 [BackgroundGemini] API call failed: \(error?.localizedDescription ?? "unknown")")
-        if let data = data, let responseStr = String(data: data, encoding: .utf8) {
-          print("🤖 [BackgroundGemini] Response: \(responseStr)")
-        }
+            let accessToken = json["access_token"] as? String else {
+        print("⚠️ [BackgroundBaidu] Failed to get access token: \(error?.localizedDescription ?? "unknown")")
         completion(nil)
         return
       }
-
-      // Log token usage for cost estimation
-      if let usageMetadata = json["usageMetadata"] as? [String: Any] {
-        let promptTokens = usageMetadata["promptTokenCount"] as? Int ?? 0
-        let candidatesTokens = usageMetadata["candidatesTokenCount"] as? Int ?? 0
-        let totalTokens = usageMetadata["totalTokenCount"] as? Int ?? 0
-        print("💰 [Token Usage] Prompt: \(promptTokens) | Response: \(candidatesTokens) | Total: \(totalTokens) | Images: \(images.count)")
-      }
-
-      print("🤖 [BackgroundGemini] Got response: \(text.prefix(100))...")
-      completion(text)
+      
+      self.baiduAccessToken = accessToken
+      // Baidu tokens typically expire in 30 days, refresh after 25 days
+      self.baiduTokenExpiry = Date().addingTimeInterval(25 * 24 * 60 * 60)
+      print("✅ [BackgroundBaidu] Access token obtained")
+      completion(accessToken)
     }.resume()
+  }
+  
+  private func ensureValidBaiduToken(completion: @escaping (String?) -> Void) {
+    if let token = baiduAccessToken,
+       let expiry = baiduTokenExpiry,
+       expiry > Date() {
+      completion(token)
+      return
+    }
+    
+    refreshBaiduAccessToken(completion: completion)
+  }
+
+  private func callBaiduAPI(message: String, images: [Data], completion: @escaping (String?) -> Void) {
+    ensureValidBaiduToken { [weak self] accessToken in
+      guard let self = self, let token = accessToken else {
+        completion(nil)
+        return
+      }
+      
+      let url = URL(string: "https://aip.baidubce.com/rpc/2.0/ai_custom/v1/wenxinworkshop/chat/completions?access_token=\(token)")!
+      var request = URLRequest(url: url)
+      request.httpMethod = "POST"
+      request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+      // Build messages array
+      var messages: [[String: Any]] = []
+      
+      // Prepare content parts
+      var contentParts: [[String: Any]] = []
+      
+      // Add images as base64
+      for imageData in images {
+        let base64 = imageData.base64EncodedString()
+        contentParts.append([
+          "type": "image_url",
+          "image_url": [
+            "url": "data:image/jpeg;base64,\(base64)"
+          ]
+        ])
+      }
+      
+      // Add text content
+      var textContent = message
+      if !images.isEmpty {
+        textContent = "The above images are screenshots from the screen in chronological order. Use them as visual context to understand what the user is looking at.\n\n\(message)"
+      }
+      
+      contentParts.append([
+        "type": "text",
+        "text": textContent
+      ])
+      
+      messages.append([
+        "role": "user",
+        "content": contentParts
+      ])
+
+      let body: [String: Any] = [
+        "messages": messages,
+        "temperature": 0.4,
+        "max_output_tokens": 1024
+      ]
+
+      request.httpBody = try? JSONSerialization.data(withJSONObject: body)
+
+      // Use URLSession with timeout configuration
+      let config = URLSessionConfiguration.default
+      config.timeoutIntervalForRequest = 20.0  // 20s for request
+      config.timeoutIntervalForResource = 25.0  // 25s total
+      let urlSession = URLSession(configuration: config)
+
+      urlSession.dataTask(with: request) { data, response, error in
+        guard let data = data,
+              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
+          print("🤖 [BackgroundBaidu] API call failed: \(error?.localizedDescription ?? "unknown")")
+          if let data = data, let responseStr = String(data: data, encoding: .utf8) {
+            print("🤖 [BackgroundBaidu] Response: \(responseStr)")
+          }
+          completion(nil)
+          return
+        }
+        
+        // Handle Baidu API response format
+        if let result = json["result"] as? String {
+          // Log token usage if available
+          if let usage = json["usage"] as? [String: Any] {
+            let promptTokens = usage["prompt_tokens"] as? Int ?? 0
+            let completionTokens = usage["completion_tokens"] as? Int ?? 0
+            let totalTokens = usage["total_tokens"] as? Int ?? 0
+            print("💰 [Token Usage] Prompt: \(promptTokens) | Response: \(completionTokens) | Total: \(totalTokens) | Images: \(images.count)")
+          }
+          
+          print("🤖 [BackgroundBaidu] Got response: \(result.prefix(100))...")
+          completion(result)
+        } else if let errorCode = json["error_code"] as? Int {
+          let errorMsg = json["error_msg"] as? String ?? "Unknown error"
+          print("🤖 [BackgroundBaidu] API error: \(errorCode) - \(errorMsg)")
+          
+          // Handle token expiry - retry with new token
+          if errorCode == 110 || errorCode == 111 {
+            self.refreshBaiduAccessToken { newToken in
+              if newToken != nil {
+                self.callBaiduAPI(message: message, images: images, completion: completion)
+              } else {
+                completion(nil)
+              }
+            }
+          } else {
+            completion(nil)
+          }
+        } else {
+          print("🤖 [BackgroundBaidu] Unexpected response format")
+          completion(nil)
+        }
+      }.resume()
+    }
   }
 
   private func checkForGeminiTimeout() {

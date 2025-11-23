@@ -1,14 +1,8 @@
-// TODO: Improve prompt engineering for better personality and responses
-//       Should be aware of its own features + limitations,
-//       note when screen capture ends, etc.
-
-// TODO: Replace Gemini with Baidu ERNIE (must test!)
-// TODO: Need to fine tune model?
-
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:provider/provider.dart';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'constants/colors.dart';
 import 'constants/theme.dart';

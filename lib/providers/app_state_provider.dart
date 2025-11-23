@@ -6,7 +6,7 @@ import 'package:uuid/uuid.dart';
 import '../services/permission_service.dart';
 import '../services/storage_service.dart';
 import '../services/speech_service.dart';
-import '../services/gemini_service.dart';
+import '../services/baidu_service.dart';
 import '../services/tts_service.dart';
 import '../services/screen_stream_service.dart';
 import '../services/embedding_service.dart';
@@ -27,7 +27,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   final PermissionService _permissionService;
   final StorageService _storageService;
   final SpeechService _speechService;
-  final GeminiService _geminiService;
+  final BaiduService _baiduService;
   final TTSService _ttsService;
   final ScreenStreamService _screenStreamService;
   final EmbeddingService _embeddingService;
@@ -94,7 +94,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     PermissionService? permissionService,
     StorageService? storageService,
     SpeechService? speechService,
-    GeminiService? geminiService,
+    BaiduService? baiduService,
     TTSService? ttsService,
     ScreenStreamService? screenStreamService,
     EmbeddingService? embeddingService,
@@ -102,7 +102,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   }) : _permissionService = permissionService ?? PermissionService(),
        _storageService = storageService ?? StorageService(),
        _speechService = speechService ?? SpeechService(),
-       _geminiService = geminiService ?? GeminiService(),
+       _baiduService = baiduService ?? BaiduService(),
        _ttsService = ttsService ?? TTSService(),
        _screenStreamService = screenStreamService ?? ScreenStreamService(),
        _embeddingService = embeddingService ?? EmbeddingService(),
@@ -167,8 +167,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
           : PermissionState.denied;
     }
 
-    // Initialize Gemini service
-    await _geminiService.initialize();
+    // Initialize Baidu service
+    await _baiduService.initialize();
 
     // Initialize embedding service for RAG
     await _embeddingService.initialize();
@@ -318,14 +318,13 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
 
   /// Update the broadcast context with current chat history and credentials
   Future<void> _updateBroadcastContext() async {
-    final geminiApiKey = dotenv.env['GEMINI_API_KEY'];
+    final baiduApiKey = dotenv.env['BAIDU_API_KEY'];
+    final baiduSecretKey = dotenv.env['BAIDU_SECRET_KEY'];
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
-    if (geminiApiKey == null || geminiApiKey.isEmpty) {
-      debugPrint(
-        '⚠️ [BroadcastContext] Cannot set context - missing Gemini API key',
-      );
+    if (baiduApiKey == null || baiduApiKey.isEmpty || baiduSecretKey == null || baiduSecretKey.isEmpty) {
+      debugPrint('⚠️ [BroadcastContext] Cannot set context - missing Baidu API credentials');
       return;
     }
 
@@ -345,7 +344,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     // Get conversation IDs for RAG
     final conversationIds = _conversations.map((c) => c.id).toList();
 
-    debugPrint('🤖 [BroadcastContext] Setting context for background Gemini:');
+    debugPrint('🤖 [BroadcastContext] Setting context for background Baidu:');
     debugPrint('   - Chat history: ${chatHistory.length} messages');
     debugPrint('   - Conversation IDs: ${conversationIds.length} for RAG');
     debugPrint(
@@ -355,7 +354,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     await _screenStreamService.setBroadcastContext(
       chatHistory: chatHistory,
       conversationIds: conversationIds,
-      geminiApiKey: geminiApiKey,
+      baiduApiKey: baiduApiKey,
+      baiduSecretKey: baiduSecretKey,
       supabaseUrl: supabaseUrl ?? '',
       supabaseAnonKey: supabaseAnonKey ?? '',
     );
@@ -442,8 +442,8 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     _currentMessages = [];
     _currentMessageStartTime = DateTime.now();
 
-    // Reset Gemini chat session for fresh conversation
-    _geminiService.resetChat();
+    // Reset Baidu chat session for fresh conversation
+    _baiduService.resetChat();
     _geminiResponse = null;
     _displayedResponseLength = 0;
 
@@ -585,10 +585,10 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     _ttsAudioLevelSamples = [];
   }
 
-  /// Send message to Gemini and update response
+  /// Send message to Baidu and update response
   /// This runs asynchronously without blocking the speech recognition
   void _sendToGemini(String message) {
-    if (!_geminiService.isInitialized) return;
+    if (!_baiduService.isInitialized) return;
 
     // Print audio stats for this segment
     _printAudioStats();
@@ -603,7 +603,7 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     _sampleAndSendToGemini(message);
   }
 
-  /// Sample screenshots and send message to Gemini
+  /// Sample screenshots and send message to Baidu
   Future<void> _sampleAndSendToGemini(String message) async {
     try {
       // Sample screenshots from buffer (clears buffer after sampling)
@@ -632,15 +632,15 @@ Current question/message: $message''';
         }
       }
 
-      // Send to Gemini with or without screenshots
+      // Send to Baidu with or without screenshots
       final String? response;
       if (screenshots.isNotEmpty) {
-        response = await _geminiService.sendMessageWithScreenshots(
+        response = await _baiduService.sendMessageWithScreenshots(
           augmentedMessage,
           screenshots,
         );
       } else {
-        response = await _geminiService.sendMessage(augmentedMessage);
+        response = await _baiduService.sendMessage(augmentedMessage);
       }
 
       _geminiResponse = response;
@@ -800,14 +800,14 @@ Current question/message: $message''';
     _currentMessages = [];
     _currentMessageStartTime = null;
 
-    // Reset Gemini response and chat session
+    // Reset Baidu response and chat session
     _geminiResponse = null;
     _isGeminiLoading = false;
     _typewriterTimer?.cancel();
     _displayedResponseLength = 0;
-    _geminiService.resetChat();
+    _baiduService.resetChat();
 
-    // Clear any pending background Gemini requests
+    // Clear any pending background Baidu requests
     await _screenStreamService.clearGeminiResponse();
 
     _isChatActive = false;
@@ -1054,11 +1054,9 @@ Current question/message: $message''';
     if (state == AppLifecycleState.resumed) {
       debugPrint('📱 [AppLifecycle] App resumed from background');
 
-      // App returned to foreground - check for background Gemini responses
+      // App returned to foreground - check for background Baidu responses
       if (_isChatActive && _isScreenRecordingActive) {
-        debugPrint(
-          '🤖 [AppLifecycle] Chat + broadcast active - checking for background Gemini response...',
-        );
+        debugPrint('🤖 [AppLifecycle] Chat + broadcast active - checking for background Baidu response...');
         _checkBackgroundGeminiResponse();
       }
 
@@ -1076,11 +1074,11 @@ Current question/message: $message''';
     // This allows the voice agent to attempt to continue in the background
   }
 
-  /// Check for and process any Gemini responses from background processing
+  /// Check for and process any Baidu responses from background processing
   Future<void> _checkBackgroundGeminiResponse() async {
     final response = await _screenStreamService.checkGeminiResponse();
     if (response == null) {
-      debugPrint('🤖 [BackgroundSync] No pending Gemini response found');
+      debugPrint('🤖 [BackgroundSync] No pending Baidu response found');
       return;
     }
 
@@ -1092,12 +1090,8 @@ Current question/message: $message''';
       return;
     }
 
-    debugPrint(
-      '🤖 [BackgroundSync] ✓ Found background Gemini response - syncing to chat session',
-    );
-    debugPrint(
-      '   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."',
-    );
+    debugPrint('🤖 [BackgroundSync] ✓ Found background Baidu response - syncing to chat session');
+    debugPrint('   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."');
     debugPrint('   - Response length: ${geminiResponse.length} chars');
 
     // Clear the response flag
@@ -1121,8 +1115,8 @@ Current question/message: $message''';
     );
     _currentMessages.add(agentMessage);
 
-    // Inject into Gemini chat session for continuity
-    _geminiService.injectHistoryEntry(transcript, geminiResponse);
+    // Inject into Baidu chat session for continuity
+    _baiduService.injectHistoryEntry(transcript, geminiResponse);
     debugPrint('🤖 [BackgroundSync] Injected into chat session for continuity');
 
     // Update UI
@@ -1158,7 +1152,7 @@ Current question/message: $message''';
       _currentMessages.add(message);
       notifyListeners();
 
-      // Send to Gemini
+      // Send to Baidu
       _sendToGemini(pendingTranscript);
     }
 
