@@ -304,7 +304,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
       final currentTranscript = await _speechService.getTranscript();
       if (currentTranscript.isNotEmpty) {
         _shouldDiscardNextBroadcastMessage = true;
-        debugPrint('🎤 [Broadcast] Started with buffered text - will discard first message');
+        debugPrint(
+          '🎤 [Broadcast] Started with buffered text - will discard first message',
+        );
       } else {
         _shouldDiscardNextBroadcastMessage = false;
         debugPrint('🎤 [Broadcast] Started clean - first message is valid');
@@ -321,15 +323,21 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
     if (geminiApiKey == null || geminiApiKey.isEmpty) {
-      debugPrint('⚠️ [BroadcastContext] Cannot set context - missing Gemini API key');
+      debugPrint(
+        '⚠️ [BroadcastContext] Cannot set context - missing Gemini API key',
+      );
       return;
     }
 
     // Get chat history from current session messages (last 10)
-    final fullHistory = _currentMessages.map((msg) => {
-      'role': msg.sender == MessageSender.user ? 'user' : 'assistant',
-      'content': msg.text,
-    }).toList();
+    final fullHistory = _currentMessages
+        .map(
+          (msg) => {
+            'role': msg.sender == MessageSender.user ? 'user' : 'assistant',
+            'content': msg.text,
+          },
+        )
+        .toList();
     final chatHistory = fullHistory.length > 10
         ? fullHistory.sublist(fullHistory.length - 10)
         : fullHistory;
@@ -340,7 +348,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     debugPrint('🤖 [BroadcastContext] Setting context for background Gemini:');
     debugPrint('   - Chat history: ${chatHistory.length} messages');
     debugPrint('   - Conversation IDs: ${conversationIds.length} for RAG');
-    debugPrint('   - Supabase URL: ${supabaseUrl != null && supabaseUrl.isNotEmpty ? "✓" : "✗"}');
+    debugPrint(
+      '   - Supabase URL: ${supabaseUrl != null && supabaseUrl.isNotEmpty ? "✓" : "✗"}',
+    );
 
     await _screenStreamService.setBroadcastContext(
       chatHistory: chatHistory,
@@ -458,7 +468,9 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
   /// Handle speech events from native side
   void _handleSpeechEvent(Map<String, dynamic> event) {
     final eventType = event['event'] as String?;
-    debugPrint('🎤 [Speech] Event received: $eventType, ignoringSTT: $_ignoringSTT');
+    debugPrint(
+      '🎤 [Speech] Event received: $eventType, ignoringSTT: $_ignoringSTT',
+    );
 
     if (eventType == 'segmentComplete') {
       // Ignore STT input while agent is speaking (it's just picking up TTS output)
@@ -473,11 +485,14 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         // to filter out the voice agent listening to itself
         if (_screenStreamService.isCapturing) {
           if (_shouldDiscardNextBroadcastMessage) {
-            debugPrint('🎤 [Speech] Discarding message (broadcast self-listen filter): "$text"');
-            _shouldDiscardNextBroadcastMessage = false;  // Next message is valid
+            debugPrint(
+              '🎤 [Speech] Discarding message (broadcast self-listen filter): "$text"',
+            );
+            _shouldDiscardNextBroadcastMessage = false; // Next message is valid
             return;
           } else {
-            _shouldDiscardNextBroadcastMessage = true;  // After processing, discard next one
+            _shouldDiscardNextBroadcastMessage =
+                true; // After processing, discard next one
           }
         }
 
@@ -596,19 +611,21 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
         maxSamples: 10,
       );
 
-      // Retrieve relevant context from past conversations (RAG)
+      // Retrieve relevant context from all conversations (RAG)
       String augmentedMessage = message;
-      if (_embeddingService.isReady && _conversations.isNotEmpty) {
-        final conversationIds = _conversations.map((c) => c.id).toList();
+      if (_embeddingService.isReady) {
+        // Search across all conversations, not just user's own
         final relevantContext = await _embeddingService.retrieveSimilarMessages(
           query: message,
-          conversationIds: conversationIds,
+          conversationIds: null, // null means search all
           limit: 5,
+          searchAllConversations: true,
         );
 
         if (relevantContext.isNotEmpty) {
           final contextText = relevantContext.join('\n---\n');
-          augmentedMessage = '''Here is some relevant context from our past conversations:
+          augmentedMessage =
+              '''Here is some relevant context from past conversations:
 $contextText
 
 Current question/message: $message''';
@@ -705,7 +722,9 @@ Current question/message: $message''';
           await Future.delayed(const Duration(milliseconds: 200));
           _ignoringSTT = false;
         } else {
-          debugPrint('🎤 [Speech] Not restarting STT (chat inactive or mic muted)');
+          debugPrint(
+            '🎤 [Speech] Not restarting STT (chat inactive or mic muted)',
+          );
           _ignoringSTT = false;
         }
       }
@@ -721,7 +740,7 @@ Current question/message: $message''';
   Future<void> endChat() async {
     // Stop any TTS playback
     _ttsService.stop();
-    
+
     // Cancel TTS audio level subscription
     _ttsAudioLevelSubscription?.cancel();
     _ttsAudioLevelSubscription = null;
@@ -750,7 +769,7 @@ Current question/message: $message''';
     _audioLevelSubscription = null;
     _speechEventSubscription?.cancel();
     _speechEventSubscription = null;
-    
+
     // Reset all audio-related state
     _audioLevel = 0.0;
     _audioLevelSamples = [];
@@ -1018,10 +1037,13 @@ Current question/message: $message''';
   void didChangeAppLifecycleState(AppLifecycleState state) {
     super.didChangeAppLifecycleState(state);
 
-    if (state == AppLifecycleState.paused || state == AppLifecycleState.inactive) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive) {
       // App going to background - update context with latest messages
       if (_isChatActive && _isScreenRecordingActive) {
-        debugPrint('📱 [AppLifecycle] App backgrounding - updating broadcast context with ${_currentMessages.length} messages');
+        debugPrint(
+          '📱 [AppLifecycle] App backgrounding - updating broadcast context with ${_currentMessages.length} messages',
+        );
         _updateBroadcastContext();
       }
       // Reset STT ignore flag when backgrounding - ensures we can process transcripts
@@ -1034,14 +1056,18 @@ Current question/message: $message''';
 
       // App returned to foreground - check for background Gemini responses
       if (_isChatActive && _isScreenRecordingActive) {
-        debugPrint('🤖 [AppLifecycle] Chat + broadcast active - checking for background Gemini response...');
+        debugPrint(
+          '🤖 [AppLifecycle] Chat + broadcast active - checking for background Gemini response...',
+        );
         _checkBackgroundGeminiResponse();
       }
 
       // Restart speech recognition
       // iOS may have interrupted the audio session while backgrounded
       if (_isChatActive && !_isMicrophoneMuted) {
-        debugPrint('🎙️ [AppLifecycle] Restarting speech recognition after resume');
+        debugPrint(
+          '🎙️ [AppLifecycle] Restarting speech recognition after resume',
+        );
         _restartSpeechRecognition();
       }
     }
@@ -1066,8 +1092,12 @@ Current question/message: $message''';
       return;
     }
 
-    debugPrint('🤖 [BackgroundSync] ✓ Found background Gemini response - syncing to chat session');
-    debugPrint('   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."');
+    debugPrint(
+      '🤖 [BackgroundSync] ✓ Found background Gemini response - syncing to chat session',
+    );
+    debugPrint(
+      '   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."',
+    );
     debugPrint('   - Response length: ${geminiResponse.length} chars');
 
     // Clear the response flag
@@ -1117,7 +1147,9 @@ Current question/message: $message''';
 
     // Process any pending transcript that was captured before restart
     if (pendingTranscript.isNotEmpty) {
-      debugPrint('🎤 [Speech] Processing pending transcript from restart: "$pendingTranscript"');
+      debugPrint(
+        '🎤 [Speech] Processing pending transcript from restart: "$pendingTranscript"',
+      );
       final message = Message(
         id: DateTime.now().millisecondsSinceEpoch.toString(),
         text: pendingTranscript,

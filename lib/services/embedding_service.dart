@@ -81,25 +81,35 @@ class EmbeddingService {
 
   /// Retrieve similar messages based on query
   /// Returns list of relevant message texts
+  /// If conversationIds is null or empty, searches across all conversations
   Future<List<String>> retrieveSimilarMessages({
     required String query,
-    required List<String> conversationIds,
+    List<String>? conversationIds,
     int limit = 5,
+    bool searchAllConversations = false,
   }) async {
-    if (!isReady || conversationIds.isEmpty) return [];
+    if (!isReady) return [];
 
     try {
       final queryEmbedding = await generateEmbedding(query);
       if (queryEmbedding == null) return [];
 
+      // Build params for Supabase RPC
+      final params = <String, dynamic>{
+        'query_embedding': queryEmbedding,
+        'match_count': limit,
+      };
+
+      // Only add filter if we're not searching all conversations and IDs are provided
+      if (!searchAllConversations && conversationIds != null && conversationIds.isNotEmpty) {
+        params['filter_conversation_ids'] = conversationIds;
+      }
+      // If searchAllConversations is true or conversationIds is null/empty, don't filter
+
       // Use Supabase RPC for vector similarity search
       final results = await _supabase!.rpc(
         'match_message_embeddings',
-        params: {
-          'query_embedding': queryEmbedding,
-          'match_count': limit,
-          'filter_conversation_ids': conversationIds,
-        },
+        params: params,
       );
 
       if (results == null) return [];

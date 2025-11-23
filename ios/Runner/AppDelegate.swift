@@ -2247,13 +2247,8 @@ import Speech
   private func retrieveRAGContext(query: String, completion: @escaping ([String]) -> Void) {
     guard let supabaseUrl = supabaseUrl,
           let supabaseKey = supabaseAnonKey,
-          let apiKey = geminiApiKey,
-          !conversationIds.isEmpty else {
-      if conversationIds.isEmpty {
-        print("🤖 [BackgroundGemini] RAG skipped - no conversation IDs available")
-      } else {
-        print("⚠️ [BackgroundGemini] RAG skipped - missing Supabase credentials")
-      }
+          let apiKey = geminiApiKey else {
+      print("⚠️ [BackgroundGemini] RAG skipped - missing Supabase credentials")
       completion([])
       return
     }
@@ -2268,7 +2263,7 @@ import Speech
         return
       }
 
-      print("🤖 [BackgroundGemini] Querying Supabase for similar messages in \(self.conversationIds.count) conversations...")
+      print("🤖 [BackgroundGemini] Querying Supabase for similar messages across all conversations...")
 
       // Query Supabase for similar messages
       let url = URL(string: "\(supabaseUrl)/rest/v1/rpc/match_message_embeddings")!
@@ -2278,11 +2273,13 @@ import Speech
       request.setValue(supabaseKey, forHTTPHeaderField: "apikey")
       request.setValue("Bearer \(supabaseKey)", forHTTPHeaderField: "Authorization")
 
-      let body: [String: Any] = [
+      // Build body without filter_conversation_ids to search all conversations
+      var body: [String: Any] = [
         "query_embedding": embedding,
         "match_count": 5,
-        "filter_conversation_ids": self.conversationIds
       ]
+      // Only add filter if we want to limit to specific conversations
+      // For now, we search across all conversations by omitting the filter
 
       request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
