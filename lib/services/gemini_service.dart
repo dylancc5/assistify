@@ -1,3 +1,5 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:google_generative_ai/google_generative_ai.dart';
@@ -7,6 +9,10 @@ class GeminiService {
   GenerativeModel? _model;
   ChatSession? _chatSession;
   bool _isInitialized = false;
+  
+  // Request tracking for duplicate prevention
+  String? _activeRequestId;
+  int _consecutiveFailures = 0;
 
   /// Initialize the Gemini service with API key from environment
   Future<bool> initialize() async {
@@ -80,19 +86,96 @@ GUIDANCE STYLE:
       return null;
     }
 
-    try {
-      final response = await _chatSession!.sendMessage(Content.text(message));
+    // Generate request ID at start
+    final requestId = DateTime.now().millisecondsSinceEpoch.toString();
+    _activeRequestId = requestId;
 
-      final responseText = response.text;
-      if (responseText != null && responseText.isNotEmpty) {
-        return responseText;
+    int retries = 2; // Reduced from 3 to avoid long delays
+    Duration delay = const Duration(seconds: 1);
+
+    while (retries >= 0) {
+      try {
+        final response = await _chatSession!.sendMessage(Content.text(message))
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                throw TimeoutException('Gemini API request timed out');
+              },
+            );
+
+        // Check if this request is still active before processing response
+        if (_activeRequestId != requestId) {
+          debugPrint('Request was superseded - ignoring response');
+          return null;
+        }
+
+        _activeRequestId = null;
+        final responseText = response.text;
+
+        // Reset failure counter on success
+        _consecutiveFailures = 0;
+
+        if (responseText != null && responseText.isNotEmpty) {
+          return responseText;
+        }
+
+        return null;
+      } on TimeoutException {
+        debugPrint('Gemini API timeout - ${retries > 0 ? "retrying" : "giving up"}...');
+        if (retries > 0) {
+          retries--;
+          await Future.delayed(delay);
+          delay *= 2; // Exponential backoff
+        } else {
+          _activeRequestId = null;
+          _consecutiveFailures++;
+          return 'I apologize, but the request took too long. Please try again.';
+        }
+      } on SocketException catch (e) {
+        debugPrint('Network unavailable: $e');
+        _activeRequestId = null;
+        _consecutiveFailures++;
+        return 'I cannot connect to the internet right now. Please check your connection and try again.';
+      } catch (e) {
+        debugPrint('Error sending message to Gemini: $e');
+        
+        // Check if it's a retryable error
+        final errorStr = e.toString().toLowerCase();
+        final isRetryable = errorStr.contains('timeout') ||
+            errorStr.contains('network') ||
+            errorStr.contains('socket') ||
+            errorStr.contains('connection');
+        
+        // Check for rate limit errors (429)
+        final isRateLimit = errorStr.contains('rate limit') ||
+            errorStr.contains('429') ||
+            errorStr.contains('quota');
+        
+        if (isRateLimit) {
+          _consecutiveFailures++;
+          if (_consecutiveFailures >= 3) {
+            _activeRequestId = null;
+            return 'I am experiencing high demand. Please wait a moment and try again.';
+          }
+        }
+
+        if (isRetryable && retries > 0) {
+          retries--;
+          await Future.delayed(delay);
+          delay *= 2;
+          continue;
+        } else {
+          _activeRequestId = null;
+          if (retries == 0) {
+            _consecutiveFailures++;
+          }
+          return 'I encountered an error. Please try again.';
+        }
       }
-
-      return null;
-    } catch (e) {
-      debugPrint('Error sending message to Gemini: $e');
-      return 'Error: Unable to get response from Gemini';
     }
+
+    _activeRequestId = null;
+    return 'I encountered an error. Please try again.';
   }
 
   /// Send a message to Gemini with screenshots for visual context
@@ -106,37 +189,114 @@ GUIDANCE STYLE:
       return null;
     }
 
-    try {
-      // Build content parts: text message + images
-      final List<Part> parts = [];
+    // Generate request ID at start
+    final requestId = DateTime.now().millisecondsSinceEpoch.toString();
+    _activeRequestId = requestId;
 
-      // Add screenshots as image parts
-      if (screenshots.isNotEmpty) {
-        for (final screenshot in screenshots) {
-          parts.add(DataPart('image/jpeg', screenshot));
+    int retries = 2; // Reduced from 3 to avoid long delays
+    Duration delay = const Duration(seconds: 1);
+
+    while (retries >= 0) {
+      try {
+        // Build content parts: text message + images
+        final List<Part> parts = [];
+
+        // Add screenshots as image parts
+        if (screenshots.isNotEmpty) {
+          for (final screenshot in screenshots) {
+            parts.add(DataPart('image/jpeg', screenshot));
+          }
+          // Add context about the images
+          parts.add(TextPart(
+            'The above images are screenshots from the user\'s screen captured over time, shown in chronological order. '
+            'Use them to understand what the user is looking at and provide relevant assistance.\n\n'
+            'User message: $message',
+          ));
+        } else {
+          parts.add(TextPart(message));
         }
-        // Add context about the images
-        parts.add(TextPart(
-          'The above images are screenshots from the user\'s screen captured over time, shown in chronological order. '
-          'Use them to understand what the user is looking at and provide relevant assistance.\n\n'
-          'User message: $message',
-        ));
-      } else {
-        parts.add(TextPart(message));
+
+        final response = await _chatSession!.sendMessage(Content.multi(parts))
+            .timeout(
+              const Duration(seconds: 30),
+              onTimeout: () {
+                throw TimeoutException('Gemini API request timed out');
+              },
+            );
+
+        // Check if this request is still active before processing response
+        if (_activeRequestId != requestId) {
+          debugPrint('Request was superseded - ignoring response');
+          return null;
+        }
+
+        _activeRequestId = null;
+        final responseText = response.text;
+
+        // Reset failure counter on success
+        _consecutiveFailures = 0;
+
+        if (responseText != null && responseText.isNotEmpty) {
+          return responseText;
+        }
+
+        return null;
+      } on TimeoutException {
+        debugPrint('Gemini API timeout with screenshots - ${retries > 0 ? "retrying" : "giving up"}...');
+        if (retries > 0) {
+          retries--;
+          await Future.delayed(delay);
+          delay *= 2; // Exponential backoff
+        } else {
+          _activeRequestId = null;
+          _consecutiveFailures++;
+          return 'I apologize, but the request took too long. Please try again.';
+        }
+      } on SocketException catch (e) {
+        debugPrint('Network unavailable: $e');
+        _activeRequestId = null;
+        _consecutiveFailures++;
+        return 'I cannot connect to the internet right now. Please check your connection and try again.';
+      } catch (e) {
+        debugPrint('Error sending message with screenshots to Gemini: $e');
+        
+        // Check if it's a retryable error
+        final errorStr = e.toString().toLowerCase();
+        final isRetryable = errorStr.contains('timeout') ||
+            errorStr.contains('network') ||
+            errorStr.contains('socket') ||
+            errorStr.contains('connection');
+        
+        // Check for rate limit errors (429)
+        final isRateLimit = errorStr.contains('rate limit') ||
+            errorStr.contains('429') ||
+            errorStr.contains('quota');
+        
+        if (isRateLimit) {
+          _consecutiveFailures++;
+          if (_consecutiveFailures >= 3) {
+            _activeRequestId = null;
+            return 'I am experiencing high demand. Please wait a moment and try again.';
+          }
+        }
+
+        if (isRetryable && retries > 0) {
+          retries--;
+          await Future.delayed(delay);
+          delay *= 2;
+          continue;
+        } else {
+          _activeRequestId = null;
+          if (retries == 0) {
+            _consecutiveFailures++;
+          }
+          return 'I encountered an error. Please try again.';
+        }
       }
-
-      final response = await _chatSession!.sendMessage(Content.multi(parts));
-
-      final responseText = response.text;
-      if (responseText != null && responseText.isNotEmpty) {
-        return responseText;
-      }
-
-      return null;
-    } catch (e) {
-      debugPrint('Error sending message with screenshots to Gemini: $e');
-      return 'Error: Unable to get response from Gemini';
     }
+
+    _activeRequestId = null;
+    return 'I encountered an error. Please try again.';
   }
 
   /// Reset the chat session (start fresh conversation)

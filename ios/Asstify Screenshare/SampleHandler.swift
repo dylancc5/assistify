@@ -13,11 +13,17 @@ import AVFoundation
 
 class SampleHandler: RPBroadcastSampleHandler {
     private let appGroupIdentifier = "group.com.dylancc5.assistify.broadcast"
-    private let maxFrames = 100
+    private let maxFrames = 50
     private let frameCaptureInterval: TimeInterval = 1.0  // 1 second between frames
     private var lastFrameCaptureTime: Date?
     private var frameSequence: Int = 0
     private let frameQueue = DispatchQueue(label: "com.assistify.frameProcessing")
+    
+    // Memory tracking
+    private var totalFrameMemory: Int64 = 0
+    private let maxFrameMemory: Int64 = 30_000_000  // 30MB for 50 frames
+    private var totalAudioMemory: Int64 = 0
+    private let maxAudioMemory: Int64 = 5_000_000  // 5MB
 
     // Audio chunk properties
     private var audioChunkSequence: Int = 0
@@ -43,6 +49,13 @@ class SampleHandler: RPBroadcastSampleHandler {
     private var lastSavedTranscript: String = ""
     private var lastSavedTranscriptTime: TimeInterval = 0
     
+    // File I/O retry tracking
+    private var fileRetryCount: [String: Int] = [:]
+    private let maxRetriesPerFile = 1
+    
+    // Concurrent queue for UserDefaults operations
+    private let userDefaultsQueue = DispatchQueue(label: "com.assistify.userDefaults", qos: .utility, attributes: .concurrent)
+    
     override func broadcastStarted(withSetupInfo setupInfo: [String : NSObject]?) {
         // User has requested to start the broadcast. Setup info from the UI extension can be supplied but optional.
         print("[BroadcastExtension] Broadcast started")
@@ -63,7 +76,12 @@ class SampleHandler: RPBroadcastSampleHandler {
     
     override func broadcastPaused() {
         // User has requested to pause the broadcast. Samples will stop being delivered.
-        print("[BroadcastExtension] Broadcast paused")
+        print("[BroadcastExtension] Broadcast paused - aggressive cleanup")
+        // Clean up aggressively on pause (may be memory-related)
+        cleanupOldFrames(keepCount: 10)
+        clearOldAudioChunks()
+        totalFrameMemory = 0
+        totalAudioMemory = 0
     }
     
     override func broadcastResumed() {
@@ -184,10 +202,45 @@ class SampleHandler: RPBroadcastSampleHandler {
     
     private func writeFrameToSharedContainer(_ jpegData: Data) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            print("❌ [BroadcastExtension] Cannot access App Group container")
             return
         }
         
+        // Check memory before writing
+        let dataSize = Int64(jpegData.count)
+        
+        // Check if sampling is in progress (via UserDefaults flag from main app)
+        let isSampling = (UserDefaults(suiteName: appGroupIdentifier)?.bool(forKey: "isSamplingFrames") ?? false)
+        
+        if totalFrameMemory + dataSize > maxFrameMemory && !isSampling {
+            // Aggressively clean - keep only 30 frames (was 50)
+            let targetKeepCount = 30
+            cleanupOldFrames(keepCount: targetKeepCount)
+            // Recalculate memory after cleanup
+            totalFrameMemory = calculateCurrentFrameMemory()
+        }
+        
+        // Check available space
+        if let attributes = try? FileManager.default.attributesOfFileSystem(forPath: containerURL.path),
+           let freeSpace = attributes[.systemFreeSize] as? Int64 {
+            if freeSpace < 10_000_000 { // Less than 10MB free
+                print("⚠️ [BroadcastExtension] Low disk space (\(freeSpace) bytes) - cleaning up")
+                cleanupOldFrames(keepCount: 20)
+                clearOldAudioChunks()
+            }
+        }
+        
         let framesDirectory = containerURL.appendingPathComponent("frames", isDirectory: true)
+        
+        // Create directory if needed (with error handling)
+        if !FileManager.default.fileExists(atPath: framesDirectory.path) {
+            do {
+                try FileManager.default.createDirectory(at: framesDirectory, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print("❌ [BroadcastExtension] Cannot create frames directory: \(error)")
+                return
+            }
+        }
         
         // Generate filename with timestamp and sequence
         let timestamp = Int(Date().timeIntervalSince1970 * 1000)
@@ -195,21 +248,91 @@ class SampleHandler: RPBroadcastSampleHandler {
         let filename = "frame_\(timestamp)_\(frameSequence).jpg"
         let fileURL = framesDirectory.appendingPathComponent(filename)
         
-        // Write frame to file
+        // Write with comprehensive error handling
         do {
-            try jpegData.write(to: fileURL)
+            try jpegData.write(to: fileURL, options: .atomic)
+            
+            // Reset retry count on success
+            fileRetryCount.removeValue(forKey: filename)
+            
+            // Update memory tracking AFTER successful write
+            totalFrameMemory += dataSize
             
             // Update frame count in UserDefaults
             let frameCount = getFrameCount()
-            updateBroadcastStatus(isBroadcasting: true, frameCount: frameCount + 1)
+            updateBroadcastStatus(isBroadcasting: true, frameCount: frameCount)
             
             // Manage buffer size - delete oldest frames if over limit
             if frameCount >= maxFrames {
                 cleanupOldFrames(keepCount: maxFrames)
             }
-        } catch {
-            print("[BroadcastExtension] ERROR: Could not write frame: \(error)")
+        } catch let error as NSError {
+            // Handle specific error codes
+            let retryCount = fileRetryCount[filename] ?? 0
+            
+            switch error.code {
+            case NSFileWriteNoPermissionError:
+                print("❌ [BroadcastExtension] No permission to write file: \(filename)")
+                // Don't retry - won't succeed
+                return
+            case NSFileWriteVolumeReadOnlyError:
+                print("❌ [BroadcastExtension] Volume is read-only: \(filename)")
+                // Don't retry - won't succeed
+                return
+            case NSFileWriteOutOfSpaceError:
+                print("❌ [BroadcastExtension] Out of disk space - cleaning up aggressively")
+                cleanupOldFrames(keepCount: 10)
+                clearOldAudioChunks()
+                // Don't retry - will fail again
+                return
+            default:
+                print("❌ [BroadcastExtension] File write error (\(error.code)): \(error.localizedDescription)")
+                
+                // Retry only on transient errors and if under retry limit
+                if retryCount < maxRetriesPerFile {
+                    fileRetryCount[filename] = retryCount + 1
+                    // Attempt recovery once
+                    cleanupOldFrames(keepCount: 30)
+                    do {
+                        try jpegData.write(to: fileURL, options: .atomic)
+                        print("✓ [BroadcastExtension] Retry successful for \(filename)")
+                        fileRetryCount.removeValue(forKey: filename)
+                        
+                        // Update memory tracking
+                        totalFrameMemory += dataSize
+                        
+                        // Update frame count
+                        let frameCount = getFrameCount()
+                        updateBroadcastStatus(isBroadcasting: true, frameCount: frameCount)
+                    } catch {
+                        print("❌ [BroadcastExtension] Retry failed for \(filename) - giving up")
+                    }
+                } else {
+                    print("❌ [BroadcastExtension] Max retries reached for \(filename)")
+                }
+            }
         }
+    }
+    
+    private func calculateCurrentFrameMemory() -> Int64 {
+        guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            return 0
+        }
+        
+        let framesDirectory = containerURL.appendingPathComponent("frames", isDirectory: true)
+        guard let files = try? FileManager.default.contentsOfDirectory(atPath: framesDirectory.path) else {
+            return 0
+        }
+        
+        var total: Int64 = 0
+        for filename in files.filter({ $0.hasSuffix(".jpg") }) {
+            let fileURL = framesDirectory.appendingPathComponent(filename)
+            if let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path),
+               let size = attributes[.size] as? Int64 {
+                total += size
+            }
+        }
+        return total
     }
     
     private func getFrameCount() -> Int {
@@ -247,6 +370,9 @@ class SampleHandler: RPBroadcastSampleHandler {
             let fileURL = framesDirectory.appendingPathComponent(filename)
             try? FileManager.default.removeItem(at: fileURL)
         }
+        
+        // Recalculate memory after cleanup
+        totalFrameMemory = calculateCurrentFrameMemory()
     }
     
     private func clearOldFrames() {
@@ -267,6 +393,7 @@ class SampleHandler: RPBroadcastSampleHandler {
         }
         
         frameSequence = 0
+        totalFrameMemory = 0
     }
     
     private func updateBroadcastStatus(isBroadcasting: Bool, frameCount: Int) {
@@ -384,14 +511,29 @@ class SampleHandler: RPBroadcastSampleHandler {
 
     private func writeAudioChunkToSharedContainer(_ audioData: Data, avgAmplitude: Float, isSilent: Bool) {
         guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
+            print("❌ [BroadcastExtension] Cannot access App Group container for audio")
             return
+        }
+
+        // Check available space
+        if let attributes = try? FileManager.default.attributesOfFileSystem(forPath: containerURL.path),
+           let freeSpace = attributes[.systemFreeSize] as? Int64 {
+            if freeSpace < 10_000_000 { // Less than 10MB free
+                print("⚠️ [BroadcastExtension] Low disk space for audio (\(freeSpace) bytes) - cleaning up")
+                cleanupOldAudioChunks(keepCount: 20)
+            }
         }
 
         let audioDirectory = containerURL.appendingPathComponent("audio", isDirectory: true)
 
-        // Create audio directory if needed
+        // Create audio directory if needed (with error handling)
         if !FileManager.default.fileExists(atPath: audioDirectory.path) {
-            try? FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true, attributes: nil)
+            do {
+                try FileManager.default.createDirectory(at: audioDirectory, withIntermediateDirectories: true, attributes: nil)
+            } catch {
+                print("❌ [BroadcastExtension] Cannot create audio directory: \(error)")
+                return
+            }
         }
 
         // Generate filename with timestamp, sequence, amplitude, and silence marker
@@ -403,17 +545,61 @@ class SampleHandler: RPBroadcastSampleHandler {
         let filename = "audio_\(timestamp)_\(audioChunkSequence)_amp\(amplitudeInt)\(silenceMarker).pcm"
         let fileURL = audioDirectory.appendingPathComponent(filename)
 
-        // Write audio chunk
+        // Write audio chunk with comprehensive error handling
         do {
-            try audioData.write(to: fileURL)
+            try audioData.write(to: fileURL, options: .atomic)
+            
+            // Reset retry count on success
+            fileRetryCount.removeValue(forKey: filename)
 
             // Manage buffer size
             let chunkCount = getAudioChunkCount()
             if chunkCount > maxAudioChunks {
                 cleanupOldAudioChunks(keepCount: maxAudioChunks)
             }
-        } catch {
-            print("[BroadcastExtension] ERROR: Could not write audio chunk: \(error)")
+        } catch let error as NSError {
+            // Handle specific error codes
+            let retryCount = fileRetryCount[filename] ?? 0
+            
+            switch error.code {
+            case NSFileWriteNoPermissionError:
+                print("❌ [BroadcastExtension] No permission to write audio file: \(filename)")
+                // Don't retry - won't succeed
+                return
+            case NSFileWriteVolumeReadOnlyError:
+                print("❌ [BroadcastExtension] Volume is read-only for audio: \(filename)")
+                // Don't retry - won't succeed
+                return
+            case NSFileWriteOutOfSpaceError:
+                print("❌ [BroadcastExtension] Out of disk space for audio - cleaning up")
+                cleanupOldAudioChunks(keepCount: 10)
+                // Don't retry - will fail again
+                return
+            default:
+                print("❌ [BroadcastExtension] Audio file write error (\(error.code)): \(error.localizedDescription)")
+                
+                // Retry only on transient errors and if under retry limit
+                if retryCount < maxRetriesPerFile {
+                    fileRetryCount[filename] = retryCount + 1
+                    // Attempt recovery once
+                    cleanupOldAudioChunks(keepCount: maxAudioChunks / 2)
+                    do {
+                        try audioData.write(to: fileURL, options: .atomic)
+                        print("✓ [BroadcastExtension] Audio retry successful for \(filename)")
+                        fileRetryCount.removeValue(forKey: filename)
+                        
+                        // Manage buffer size after retry
+                        let chunkCount = getAudioChunkCount()
+                        if chunkCount > maxAudioChunks {
+                            cleanupOldAudioChunks(keepCount: maxAudioChunks)
+                        }
+                    } catch {
+                        print("❌ [BroadcastExtension] Audio retry failed for \(filename) - giving up")
+                    }
+                } else {
+                    print("❌ [BroadcastExtension] Max retries reached for audio \(filename)")
+                }
+            }
         }
     }
 
@@ -739,49 +925,61 @@ class SampleHandler: RPBroadcastSampleHandler {
             return
         }
 
-        // Prevent saving duplicate transcripts within 1 second
-        let now = Date().timeIntervalSince1970
-        if trimmed == lastSavedTranscript && (now - lastSavedTranscriptTime) < 1.0 {
-            print("⚠️ [BroadcastExtension] Skipping duplicate transcript save: \(trimmed)")
-            return
+        // Use serial queue to ensure atomic operations
+        userDefaultsQueue.async(flags: .barrier) { [weak self] in
+            guard let self = self else { return }
+            
+            // Prevent saving duplicate transcripts within 1 second
+            let now = Date().timeIntervalSince1970
+            guard let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) else {
+                print("❌ [BroadcastExtension] Could not access UserDefaults")
+                return
+            }
+            
+            // Synchronize to get latest values
+            userDefaults.synchronize()
+            
+            let lastSaved = userDefaults.string(forKey: "extensionTranscript") ?? ""
+            let lastSavedTime = userDefaults.double(forKey: "extensionTranscriptTime")
+            
+            // Check for duplicate (same text within 1 second)
+            if trimmed == lastSaved && (now - lastSavedTime) < 1.0 {
+                print("⚠️ [BroadcastExtension] Skipping duplicate transcript save")
+                return
+            }
+            
+            // Atomic update with timestamp
+            let timestamp = now
+            userDefaults.set(trimmed, forKey: "extensionTranscript")
+            userDefaults.set(timestamp, forKey: "extensionTranscriptTime")
+            userDefaults.set(true, forKey: "hasNewTranscript")
+            userDefaults.set(true, forKey: "extensionSTTActive")
+            
+            // Get current frame file paths for Gemini processing
+            let framePaths = self.getCurrentFramePaths()
+            if let framePathsData = try? JSONSerialization.data(withJSONObject: framePaths, options: []),
+               let framePathsString = String(data: framePathsData, encoding: .utf8) {
+                userDefaults.set(framePathsString, forKey: "geminiFramePaths")
+                print("🤖 [BroadcastExtension] Saved \(framePaths.count) frame paths for background Gemini")
+            } else {
+                print("⚠️ [BroadcastExtension] Failed to serialize frame paths for Gemini")
+            }
+            
+            // Set flag for background Gemini processing (use same timestamp)
+            userDefaults.set(true, forKey: "geminiRequestPending")
+            userDefaults.set(timestamp, forKey: "geminiRequestTime")
+            
+            // Final synchronization
+            userDefaults.synchronize()
+            
+            // Update local state
+            self.lastSavedTranscript = trimmed
+            self.lastSavedTranscriptTime = now
+            
+            print("💾 [BroadcastExtension] ✓ Saved transcript to UserDefaults: '\(trimmed)' (time: \(timestamp))")
+            print("🤖 [BroadcastExtension] Set geminiRequestPending=true - using EXTENSION STT (native Speech Recognition)")
+            print("[BroadcastExtension] Saved transcript: \(trimmed) with \(framePaths.count) frame paths")
         }
-
-        lastSavedTranscript = trimmed
-        lastSavedTranscriptTime = now
-
-        guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
-            print("❌ [BroadcastExtension] Could not access UserDefaults to save transcript")
-            return
-        }
-
-        // Save transcription for main app to pick up
-        // Use a timestamp-based key to allow multiple transcripts
-        let timestamp = now
-        userDefaults.set(trimmed, forKey: "extensionTranscript")
-        userDefaults.set(timestamp, forKey: "extensionTranscriptTime")
-        userDefaults.set(true, forKey: "hasNewTranscript")
-        userDefaults.set(true, forKey: "extensionSTTActive")  // Flag that extension STT is working
-        
-        print("💾 [BroadcastExtension] ✓ Saved transcript to UserDefaults: '\(trimmed)' (time: \(timestamp))")
-
-        // Get current frame file paths for Gemini processing
-        let framePaths = getCurrentFramePaths()
-        if let framePathsData = try? JSONSerialization.data(withJSONObject: framePaths, options: []),
-           let framePathsString = String(data: framePathsData, encoding: .utf8) {
-            userDefaults.set(framePathsString, forKey: "geminiFramePaths")
-            print("🤖 [BroadcastExtension] Saved \(framePaths.count) frame paths for background Gemini")
-        } else {
-            print("⚠️ [BroadcastExtension] Failed to serialize frame paths for Gemini")
-        }
-
-        // Set flag for background Gemini processing
-        userDefaults.set(true, forKey: "geminiRequestPending")
-        userDefaults.set(timestamp, forKey: "geminiRequestTime")
-
-        userDefaults.synchronize()
-
-        print("🤖 [BroadcastExtension] Set geminiRequestPending=true - using EXTENSION STT (native Speech Recognition)")
-        print("[BroadcastExtension] Saved transcript: \(trimmed) with \(framePaths.count) frame paths")
     }
 
     private func getCurrentFramePaths() -> [String] {

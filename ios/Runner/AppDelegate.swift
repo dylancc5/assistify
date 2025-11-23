@@ -75,6 +75,17 @@ import Speech
   private var chatHistory: [[String: String]] = []
   private var conversationIds: [String] = []
   private var lastProcessedRequestTime: TimeInterval = 0  // Track last processed request to avoid duplicates
+  private var activeRequestId: String?
+  
+  // Memory warning safety flags
+  private var isProcessingGeminiRequest = false
+  private var isSamplingFrames = false
+  
+  // Concurrent queue for UserDefaults operations
+  private let userDefaultsQueue = DispatchQueue(label: "com.assistify.userDefaults", qos: .utility, attributes: .concurrent)
+  
+  // Audio session transition state
+  private var isTransitioningAudioSession = false
 
   override func application(
     _ application: UIApplication,
@@ -284,6 +295,109 @@ import Speech
     }
 
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
+  }
+
+  override func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+    print("⚠️ [Memory] Memory warning received - cleaning up")
+    
+    // Only cleanup if not processing/sampling
+    guard !isProcessingGeminiRequest && !isSamplingFrames else {
+      print("⚠️ [Memory] Skipping cleanup - active operations in progress")
+      return
+    }
+    
+    // Clear frame buffer (if not using broadcast extension)
+    if !isUsingBroadcastExtension {
+      frameBufferLock.lock()
+      let bufferCount = frameBuffer.count
+      if bufferCount > 20 {
+        // Keep only most recent 20 frames
+        frameBuffer = Array(frameBuffer.suffix(20))
+        print("⚠️ [Memory] Reduced frame buffer from \(bufferCount) to 20 frames")
+      }
+      frameBufferLock.unlock()
+    }
+    
+    // Clear broadcast audio chunks if not actively using
+    if !useRawAudioSTT {
+      clearBroadcastAudioChunks()
+    }
+    
+    // Cancel any pending recognition if not actively listening
+    if !shouldBeListening {
+      recognitionTask?.cancel()
+      recognitionRequest?.endAudio()
+    }
+    
+    // Force autorelease pool cleanup
+    autoreleasepool {
+      // Any temporary objects will be released
+    }
+  }
+  
+  override func applicationWillTerminate(_ application: UIApplication) {
+    print("📱 [AppLifecycle] App terminating - cleaning up")
+    
+    let cleanupGroup = DispatchGroup()
+    var cleanupCompleted = false
+    
+    // Set timeout for cleanup
+    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+      if !cleanupCompleted {
+        print("⚠️ Cleanup timeout - forcing completion")
+        cleanupCompleted = true
+      }
+    }
+    
+    // Critical cleanup (synchronous)
+    cleanupGroup.enter()
+    endBackgroundGeminiTask()
+    stopBackgroundGeminiPolling()
+    
+    // Invalidate all timers
+    geminiPollingTimer?.invalidate()
+    geminiPollingTimer = nil
+    silenceTimer?.invalidate()
+    silenceTimer = nil
+    rawAudioSilenceTimer?.invalidate()
+    rawAudioSilenceTimer = nil
+    rawAudioSilenceEndTimer?.invalidate()
+    rawAudioSilenceEndTimer = nil
+    broadcastAudioMonitorTimer?.invalidate()
+    broadcastAudioMonitorTimer = nil
+    extensionTranscriptMonitorTimer?.invalidate()
+    extensionTranscriptMonitorTimer = nil
+    
+    cleanupGroup.leave()
+    
+    // Non-critical cleanup (async with timeout)
+    cleanupGroup.enter()
+    DispatchQueue.global().async {
+      // Stop recording if active (may not complete)
+      if let recorder = self.screenRecorder, recorder.isRecording {
+        recorder.stopCapture { error in
+          if let error = error {
+            print("⚠️ Failed to save recording on termination: \(error)")
+          }
+        }
+      }
+      
+      // Stop speech recognition
+      self.stopSpeechRecognition(result: { _ in })
+      self.stopAudioEngine()
+      
+      // Save state to UserDefaults
+      if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
+        userDefaults.set(false, forKey: "isBroadcasting")
+        userDefaults.synchronize()
+      }
+      
+      cleanupGroup.leave()
+    }
+    
+    // Wait with timeout
+    _ = cleanupGroup.wait(timeout: .now() + 1.5)
+    cleanupCompleted = true
   }
 
   // MARK: - Screen Recording Methods
@@ -821,6 +935,22 @@ import Speech
   }
 
   private func readFramesFromSharedContainer(maxSamples: Int) -> [Data] {
+    // Set flag to prevent cleanup during sampling
+    isSamplingFrames = true
+    defer { isSamplingFrames = false }
+    
+    // Also set in UserDefaults for extension to check
+    if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+      userDefaults.set(true, forKey: "isSamplingFrames")
+      userDefaults.synchronize()
+    }
+    defer {
+      if let userDefaults = UserDefaults(suiteName: appGroupIdentifier) {
+        userDefaults.set(false, forKey: "isSamplingFrames")
+        userDefaults.synchronize()
+      }
+    }
+    
     guard let containerURL = FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: appGroupIdentifier) else {
       print("[AppDelegate] ERROR: Could not access App Group container")
       return []
@@ -1012,6 +1142,48 @@ import Speech
       } catch {
         print("🎤 [Audio] Error reconfiguring audio session: \(error.localizedDescription)")
       }
+    }
+  }
+  
+  private func configureAudioSessionForTTS() {
+    guard !isTransitioningAudioSession else { return }
+    isTransitioningAudioSession = true
+    
+    let audioSession = AVAudioSession.sharedInstance()
+    do {
+      // Deactivate first, then activate with new category
+      try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+      // Use playback category for TTS (allows mixing with other audio)
+      try audioSession.setCategory(.playback, mode: .spokenAudio, options: [.duckOthers, .mixWithOthers])
+      try audioSession.setActive(true)
+      print("🔊 [Audio] Audio session configured for TTS")
+    } catch {
+      print("❌ [Audio] Failed to configure for TTS: \(error)")
+    }
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.isTransitioningAudioSession = false
+    }
+  }
+  
+  private func configureAudioSessionForSTT() {
+    guard !isTransitioningAudioSession else { return }
+    isTransitioningAudioSession = true
+    
+    let audioSession = AVAudioSession.sharedInstance()
+    do {
+      // Deactivate first, then activate with new category
+      try audioSession.setActive(false, options: .notifyOthersOnDeactivation)
+      // Use playAndRecord for STT
+      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP, .mixWithOthers])
+      try audioSession.setActive(true)
+      print("🎤 [Audio] Audio session configured for STT")
+    } catch {
+      print("❌ [Audio] Failed to configure for STT: \(error)")
+    }
+    
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) { [weak self] in
+      self?.isTransitioningAudioSession = false
     }
   }
 
@@ -1585,21 +1757,8 @@ import Speech
       return
     }
 
-    // Configure audio session with reset for interrupted state
-    do {
-      let audioSession = AVAudioSession.sharedInstance()
-
-      // First try to deactivate to reset any interrupted state
-      try? audioSession.setActive(false, options: .notifyOthersOnDeactivation)
-
-      // Use playAndRecord to allow both TTS and speech recognition
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
-      try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-    } catch {
-      print("Audio session error during restart: \(error.localizedDescription)")
-      isListening = false
-      return
-    }
+    // Configure audio session for STT
+    configureAudioSessionForSTT()
 
     // Create new recognition request
     recognitionRequest = SFSpeechAudioBufferRecognitionRequest()
@@ -1700,6 +1859,9 @@ import Speech
     // DON'T clear geminiRequestPending here - let Dart's _checkBackgroundGeminiResponse() read it first
     // The timestamp-based deduplication (lastProcessedRequestTime) prevents re-processing
     print("🤖 [BackgroundGemini] App foregrounded - Dart will check for pending responses")
+    
+    // Check for timeout and retry
+    checkForGeminiTimeout()
 
     // If we were recording raw audio with AVAudioRecorder, stop and transcribe it
     if isRecordingRawAudio && audioRecorder != nil {
@@ -1820,62 +1982,68 @@ import Speech
       return
     }
 
-    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else {
-      print("⚠️ [BackgroundGemini] Failed to access UserDefaults")
-      return
-    }
-    userDefaults.synchronize()
-
-    let isPending = userDefaults.bool(forKey: "geminiRequestPending")
-    let requestTime = userDefaults.double(forKey: "geminiRequestTime")
-
-    guard isPending else {
-      print("🤖 [BackgroundGemini] No pending request found")
-      return
-    }
-
-    // Check if this is a new request (newer than last processed)
-    guard requestTime > lastProcessedRequestTime else {
-      print("🤖 [BackgroundGemini] Request already processed (time: \(requestTime) <= \(lastProcessedRequestTime))")
-      return
-    }
-
-    print("🤖 [BackgroundGemini] ✓ Found pending Gemini request (time: \(requestTime)) - starting background task")
-
-    // Get request data
-    guard let transcript = userDefaults.string(forKey: "extensionTranscript"),
-          let framePathsString = userDefaults.string(forKey: "geminiFramePaths"),
-          let framePathsData = framePathsString.data(using: .utf8),
-          let framePaths = try? JSONSerialization.jsonObject(with: framePathsData) as? [String] else {
-      print("⚠️ [BackgroundGemini] Failed to read request data from UserDefaults")
-      return
-    }
-
-    // Validate transcript is not empty or just whitespace
-    let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
-    guard !trimmedTranscript.isEmpty else {
-      print("⚠️ [BackgroundGemini] Empty transcript - ignoring request")
-      userDefaults.set(false, forKey: "geminiRequestPending")
+    // Use serial queue for reading (ensures we see latest synchronized values)
+    userDefaultsQueue.async { [weak self] in
+      guard let self = self else { return }
+      
+      guard let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) else {
+        print("⚠️ [BackgroundGemini] Failed to access UserDefaults")
+        return
+      }
       userDefaults.synchronize()
-      return
-    }
 
-    print("🤖 [BackgroundGemini] Transcript: \"\(trimmedTranscript.prefix(50))...\" with \(framePaths.count) frames")
+      let isPending = userDefaults.bool(forKey: "geminiRequestPending")
+      let requestTime = userDefaults.double(forKey: "geminiRequestTime")
 
-    // Mark this request as processed using timestamp (don't clear the flag - let Dart read it first)
-    lastProcessedRequestTime = requestTime
-    print("🤖 [BackgroundGemini] Marked request as processed (time: \(requestTime))")
+      guard isPending else {
+        print("🤖 [BackgroundGemini] No pending request found")
+        return
+      }
 
-    // Start background task
-    backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
-      print("🤖 [BackgroundGemini] Background task expiring")
-      self?.endBackgroundGeminiTask()
-    }
+      // Check if this is a new request (newer than last processed)
+      guard requestTime > self.lastProcessedRequestTime else {
+        print("🤖 [BackgroundGemini] Request already processed (time: \(requestTime) <= \(self.lastProcessedRequestTime))")
+        return
+      }
 
-    // Process the request
-    processGeminiRequest(transcript: trimmedTranscript, framePaths: framePaths) { [weak self] success in
-      print("🤖 [BackgroundGemini] Request completed - success: \(success)")
-      self?.endBackgroundGeminiTask()
+      // Mark as processed immediately (atomic)
+      self.lastProcessedRequestTime = requestTime
+      print("🤖 [BackgroundGemini] Marked request as processed (time: \(requestTime))")
+
+      // Get request data
+      guard let transcript = userDefaults.string(forKey: "extensionTranscript"),
+            let framePathsString = userDefaults.string(forKey: "geminiFramePaths"),
+            let framePathsData = framePathsString.data(using: .utf8),
+            let framePaths = try? JSONSerialization.jsonObject(with: framePathsData) as? [String] else {
+        print("⚠️ [BackgroundGemini] Failed to read request data from UserDefaults")
+        return
+      }
+
+      // Validate transcript is not empty or just whitespace
+      let trimmedTranscript = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+      guard !trimmedTranscript.isEmpty else {
+        print("⚠️ [BackgroundGemini] Empty transcript - ignoring request")
+        userDefaults.set(false, forKey: "geminiRequestPending")
+        userDefaults.synchronize()
+        return
+      }
+
+      print("🤖 [BackgroundGemini] Transcript: \"\(trimmedTranscript.prefix(50))...\" with \(framePaths.count) frames")
+      print("🤖 [BackgroundGemini] ✓ Found pending Gemini request (time: \(requestTime)) - starting background task")
+
+      // Start background task
+      self.backgroundGeminiTask = UIApplication.shared.beginBackgroundTask(withName: "GeminiAPICall") { [weak self] in
+        print("🤖 [BackgroundGemini] Background task expiring")
+        self?.endBackgroundGeminiTask()
+      }
+
+      // Process on main thread
+      DispatchQueue.main.async {
+        self.processGeminiRequest(transcript: trimmedTranscript, framePaths: framePaths) { success in
+          print("🤖 [BackgroundGemini] Request completed - success: \(success)")
+          self.endBackgroundGeminiTask()
+        }
+      }
     }
   }
 
@@ -1887,10 +2055,69 @@ import Speech
   }
 
   private func processGeminiRequest(transcript: String, framePaths: [String], completion: @escaping (Bool) -> Void) {
+    // Set flag to prevent cleanup during processing
+    isProcessingGeminiRequest = true
+    defer { isProcessingGeminiRequest = false }
+    
     guard let apiKey = geminiApiKey else {
       print("⚠️ [BackgroundGemini] No API key available - did you call setBroadcastContext?")
       completion(false)
       return
+    }
+
+    // Generate UUID request ID
+    let requestId = UUID().uuidString
+    activeRequestId = requestId
+    
+    // Set timeout for the entire operation (25 seconds to leave buffer)
+    let operationTimeout: TimeInterval = 25.0
+    var hasCompleted = false
+    let completionLock = NSLock()
+    
+    // Timeout timer
+    let timeoutTimer = Timer.scheduledTimer(withTimeInterval: operationTimeout, repeats: false) { [weak self] _ in
+      guard let self = self else { return }
+      completionLock.lock()
+      defer { completionLock.unlock() }
+      
+      if !hasCompleted {
+        hasCompleted = true
+        print("⚠️ [BackgroundGemini] Operation timeout after \(operationTimeout)s - saving partial state")
+        
+        // Check if request completed before saving timeout state
+        if self.activeRequestId == requestId {
+          // Save timeout state to UserDefaults for retry when app comes to foreground
+          if let userDefaults = UserDefaults(suiteName: self.appGroupIdentifier) {
+            userDefaults.set(true, forKey: "geminiRequestTimeout")
+            userDefaults.set(transcript, forKey: "geminiTimeoutTranscript")
+            userDefaults.set(Date().timeIntervalSince1970, forKey: "geminiTimeoutTime")
+            // Save frame paths for retry
+            if let framePathsData = try? JSONSerialization.data(withJSONObject: framePaths, options: []),
+               let framePathsString = String(data: framePathsData, encoding: .utf8) {
+              userDefaults.set(framePathsString, forKey: "geminiTimeoutFramePaths")
+            }
+            userDefaults.synchronize()
+          }
+        }
+        
+        completion(false)
+      }
+    }
+
+    // Wrap completion to cancel timeout
+    let wrappedCompletion: (Bool) -> Void = { [weak self] success in
+      guard let self = self else { return }
+      completionLock.lock()
+      defer { completionLock.unlock() }
+      
+      if !hasCompleted {
+        hasCompleted = true
+        timeoutTimer.invalidate()
+        if self.activeRequestId == requestId {
+          self.activeRequestId = nil
+        }
+        completion(success)
+      }
     }
 
     print("🤖 [BackgroundGemini] Step 1/4: Retrieving RAG context...")
@@ -1943,7 +2170,15 @@ import Speech
       print("🤖 [BackgroundGemini] Step 3/4: Calling Gemini API with \(self.chatHistory.count) history messages...")
 
       // Make Gemini API call
-      self.callGeminiAPI(message: augmentedMessage, images: imageDataArray, apiKey: apiKey) { response in
+      self.callGeminiAPI(message: augmentedMessage, images: imageDataArray, apiKey: apiKey) { [weak self] response in
+        guard let self = self else { return }
+        // Check if this request is still active
+        guard self.activeRequestId == requestId else {
+          print("🤖 [BackgroundGemini] Request was superseded - ignoring response")
+          wrappedCompletion(false)
+          return
+        }
+        
         if let response = response {
           print("🤖 [BackgroundGemini] ✓ Gemini API call successful - response length: \(response.count)")
 
@@ -1962,10 +2197,10 @@ import Speech
           // Speak the response immediately (TTS works in background)
           self.speakInBackground(text: response)
 
-          completion(true)
+          wrappedCompletion(true)
         } else {
           print("⚠️ [BackgroundGemini] Gemini API call failed")
-          completion(false)
+          wrappedCompletion(false)
         }
       }
     }
@@ -2124,7 +2359,13 @@ import Speech
 
     request.httpBody = try? JSONSerialization.data(withJSONObject: body)
 
-    URLSession.shared.dataTask(with: request) { data, response, error in
+    // Use URLSession with timeout configuration
+    let config = URLSessionConfiguration.default
+    config.timeoutIntervalForRequest = 20.0  // 20s for request
+    config.timeoutIntervalForResource = 25.0  // 25s total
+    let urlSession = URLSession(configuration: config)
+
+    urlSession.dataTask(with: request) { data, response, error in
       guard let data = data,
             let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let candidates = json["candidates"] as? [[String: Any]],
@@ -2143,6 +2384,52 @@ import Speech
       print("🤖 [BackgroundGemini] Got response: \(text.prefix(100))...")
       completion(text)
     }.resume()
+  }
+
+  private func checkForGeminiTimeout() {
+    guard let userDefaults = UserDefaults(suiteName: appGroupIdentifier) else { return }
+    userDefaults.synchronize()
+    
+    if userDefaults.bool(forKey: "geminiRequestTimeout") {
+      print("⚠️ [BackgroundGemini] Found timeout from background - retrying...")
+      guard let transcript = userDefaults.string(forKey: "geminiTimeoutTranscript"),
+            let framePathsString = userDefaults.string(forKey: "geminiTimeoutFramePaths"),
+            let framePathsData = framePathsString.data(using: .utf8),
+            let framePaths = try? JSONSerialization.jsonObject(with: framePathsData) as? [String] else {
+        print("⚠️ [BackgroundGemini] Failed to read timeout data")
+        // Clear timeout flags even if data is invalid
+        userDefaults.set(false, forKey: "geminiRequestTimeout")
+        userDefaults.removeObject(forKey: "geminiTimeoutTranscript")
+        userDefaults.removeObject(forKey: "geminiTimeoutFramePaths")
+        userDefaults.synchronize()
+        return
+      }
+      
+      // Validate frame paths still exist before retry
+      let validFramePaths = framePaths.filter { FileManager.default.fileExists(atPath: $0) }
+      if validFramePaths.isEmpty {
+        print("⚠️ [BackgroundGemini] All frames deleted - cannot retry")
+        // Clear timeout flags
+        userDefaults.set(false, forKey: "geminiRequestTimeout")
+        userDefaults.removeObject(forKey: "geminiTimeoutTranscript")
+        userDefaults.removeObject(forKey: "geminiTimeoutFramePaths")
+        userDefaults.synchronize()
+        return
+      }
+      
+      print("🤖 [BackgroundGemini] Retrying with \(validFramePaths.count) valid frames (was \(framePaths.count))")
+      
+      // Clear timeout flags
+      userDefaults.set(false, forKey: "geminiRequestTimeout")
+      userDefaults.removeObject(forKey: "geminiTimeoutTranscript")
+      userDefaults.removeObject(forKey: "geminiTimeoutFramePaths")
+      userDefaults.synchronize()
+      
+      // Retry the request (now in foreground with more time)
+      processGeminiRequest(transcript: transcript, framePaths: validFramePaths) { success in
+        print("🔄 [BackgroundGemini] Retry result: \(success)")
+      }
+    }
   }
 
   private func speakInBackground(text: String) {
@@ -2958,15 +3245,8 @@ import Speech
       synthesizer.stopSpeaking(at: .immediate)
     }
 
-    // Configure audio session for playback and recording
-    do {
-      let audioSession = AVAudioSession.sharedInstance()
-      // Use playAndRecord to allow both TTS and speech recognition
-      try audioSession.setCategory(.playAndRecord, mode: .default, options: [.defaultToSpeaker, .allowBluetoothA2DP])
-      try audioSession.setActive(true, options: .notifyOthersOnDeactivation)
-    } catch {
-      print("TTS audio session error: \(error.localizedDescription)")
-    }
+    // Configure for TTS
+    configureAudioSessionForTTS()
 
     let utterance = AVSpeechUtterance(string: text)
 

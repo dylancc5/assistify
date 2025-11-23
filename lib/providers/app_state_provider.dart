@@ -628,8 +628,11 @@ Current question/message: $message''';
         _ignoringSTT = true;
 
         // Stop STT before speaking to clear cache and prevent garbage collection
+        // Give audio session time to switch from STT to TTS category
         if (_isChatActive && !_isMicrophoneMuted) {
           await _speechService.stopListening();
+          // Wait for audio session to release and transition
+          await Future.delayed(const Duration(milliseconds: 150));
         }
 
         // Set speaking state
@@ -661,10 +664,11 @@ Current question/message: $message''';
         _printTTSAudioStats();
 
         // Restart STT with clean state after agent finishes speaking
+        // Audio session needs time to transition from TTS (playback) back to STT (playAndRecord)
         if (_isChatActive && !_isMicrophoneMuted) {
           debugPrint('🎤 [Speech] TTS finished, restarting STT...');
-          // Small delay to ensure clean state before accepting input again
-          await Future.delayed(const Duration(milliseconds: 100));
+          // Longer delay to allow audio session to transition from TTS to STT category
+          await Future.delayed(const Duration(milliseconds: 400));
           // Clear audio samples collected during agent speech (it's just TTS noise)
           _audioLevelSamples = [];
           await _speechService.startListening(
@@ -673,8 +677,8 @@ Current question/message: $message''';
           debugPrint('🎤 [Speech] STT restarted, setting ignoringSTT = false');
 
           _voiceAgentState = VoiceAgentState.listening;
-          // Additional delay to let STT fully initialize before accepting input
-          await Future.delayed(const Duration(milliseconds: 50));
+          // Additional delay to let STT fully initialize and audio session settle before accepting input
+          await Future.delayed(const Duration(milliseconds: 200));
           _ignoringSTT = false;
           // The next transcript will be TTS garbage - discard it
           _discardNextTranscript = true;
