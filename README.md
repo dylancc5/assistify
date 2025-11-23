@@ -1,7 +1,7 @@
 # Assistify
 
 **A multimodal visual-audio companion that empowers seniors to navigate smartphones safely, confidently, and independently.**
-
+Watch our demo here: https://www.youtube.com/watch?v=Gn3NqlGXeak
 ---
 
 ## Our Mission
