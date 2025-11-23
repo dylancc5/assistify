@@ -260,6 +260,98 @@ Assistify represents a new paradigm: **Contextually aware, multimodal AI assista
 
 ---
 
+## Installation & Setup Process
+
+**Important Note:** Assistify is currently in development and not available on the App Store. Installation requires a development environment setup.
+
+### Prerequisites:
+
+- macOS with Xcode installed
+- Flutter SDK and Dart SDK installed
+- Physical iPhone device (iOS 16.0+)
+- Apple Developer account with development permissions
+- USB cable for device connection
+
+### Step 1: Development Environment Setup
+
+```bash
+# Install Flutter
+git clone https://github.com/flutter/flutter.git
+export PATH="$PATH:`pwd`/flutter/bin"
+
+# Verify installation
+flutter doctor
+```
+
+### Step 2: Clone Repository
+
+```bash
+git clone [your-repo-url]
+cd assistify
+```
+
+### Step 3: Configure Project Settings
+
+1. Open `ios/Runner.xcworkspace` in Xcode
+2. Update App Group identifiers (currently specific to development machine)
+3. Add your API keys to environment variables (keys are gitignored for security)
+   - Create a `.env` file in the project root with:
+     ```
+     BAIDU_API_KEY=your_baidu_api_key
+     BAIDU_SECRET_KEY=your_baidu_secret_key
+     GEMINI_API_KEY=your_gemini_api_key
+     SUPABASE_URL=your_supabase_url
+     SUPABASE_ANON_KEY=your_supabase_anon_key
+     ```
+4. Update team signing certificate with your Apple Developer account
+
+### Step 4: Connect Device & Deploy
+
+1. **Enable Developer Mode on iPhone**
+   - Settings → Privacy & Security → Developer Mode → Enable
+
+2. **Connect iPhone via USB**
+   - Trust the computer when prompted
+
+3. **Run deployment**
+   ```bash
+   flutter run
+   ```
+
+### Step 5: Complete In-App Setup
+
+Once installed, the app guides you through:
+
+- **Voice Selection**: Choose from available iOS text-to-speech voices
+- **Microphone Permission**: Required for voice input
+- **Screen Recording Permission**: Required for screen understanding
+- **Background App Refresh**: Enable for continuous operation
+- **Onboarding Tutorial**: Practice with sample scenarios
+
+---
+
+## How to Use Assistify (Post-Installation)
+
+### Two Operational Modes:
+
+#### Mode 1: Chat Only (No Screen Context)
+
+- **Activate**: Open Assistify and tap the microphone button
+- **Speak Naturally**: Ask general questions or have conversations
+- **Listen**: Assistify responds based on conversation history and RAG context
+- **Token Usage**: 150-750 tokens per query
+
+#### Mode 2: Chat + Screen Share (With Visual Context)
+
+- **Start Screen Share**: Enable screen broadcasting in Control Center
+- **Continuous Capture**: App samples screenshots at 1 FPS
+- **Speak Your Goal**: State what you need help with, e.g., "How do I reply to this text?"
+- **Contextual Guidance**: Assistify analyzes current screen + 10 evenly-sampled screenshots + RAG context
+- **Follow Instructions**: Perform spoken actions while Assistify continuously re-analyzes screen
+- **Token Usage**: 5,000-10,000 tokens per query (includes image context + RAG retrieval)
+
+---
+
 ## Technical Documentation
 
 ### Project Structure Overview
@@ -267,41 +359,68 @@ Assistify represents a new paradigm: **Contextually aware, multimodal AI assista
 The Assistify Flutter application follows a clean, modular architecture organized by feature and responsibility. This section provides a comprehensive guide to the codebase structure, making it easy for developers and AI agents to understand where to find and modify code.
 
 ```
-lib/
-├── main.dart                    # App entry point and initialization
-├── constants/                   # Design system constants
-│   ├── colors.dart            # Color palette and theme colors
-│   ├── dimensions.dart        # Spacing, sizes, and responsive utilities
-│   └── text_styles.dart       # Typography system
-├── models/                     # Data models and business logic
-│   ├── conversation.dart      # Conversation history model
-│   ├── message.dart           # Individual message/speech segment model
-│   ├── preferences.dart       # User preferences model
-│   └── screen_recording.dart  # Screen recording metadata model
-├── providers/                  # State management (Provider pattern)
-│   └── app_state_provider.dart # Central app state provider
-├── screens/                    # Full-screen UI components
-│   ├── home_screen.dart       # Main home screen with voice agent
-│   ├── settings_screen.dart   # Settings and preferences screen
-│   ├── history_screen.dart    # Conversation history screen
-│   └── screen_recording_history_screen.dart # Screen recording history
-├── services/                   # Business logic and platform integration
-│   ├── permission_service.dart # Permission handling (mic, screen recording)
-│   ├── recording_service.dart  # Screen recording via platform channels
-│   ├── speech_service.dart     # Speech recognition via platform channels
-│   └── storage_service.dart    # Local data persistence (SharedPreferences)
-├── utils/                      # Utility functions and helpers
-│   └── localization_helper.dart # Localization utilities
-├── widgets/                    # Reusable UI components
-│   ├── voice_agent_circle.dart # Animated voice agent circle widget
-│   ├── control_button.dart    # Control button component
-│   ├── onboarding_flow.dart   # Onboarding permission flow
-│   ├── permission_modal.dart  # Permission request modal
-│   └── screen_recording_card.dart # Screen recording card widget
-└── l10n/                       # Localization files
-    ├── app_en.arb             # English translations
-    ├── app_zh.arb             # Chinese translations
-    └── app_localizations*.dart # Generated localization code
+assistify/
+├── lib/
+│   ├── main.dart                    # App entry point and initialization
+│   ├── constants/                   # Design system constants
+│   │   ├── colors.dart              # Color palette and theme colors
+│   │   ├── dimensions.dart          # Spacing, sizes, and responsive utilities
+│   │   ├── text_styles.dart         # Typography system
+│   │   └── theme.dart               # App theme configuration
+│   ├── models/                      # Data models and business logic
+│   │   ├── conversation.dart       # Conversation history model
+│   │   ├── message.dart            # Individual message/speech segment model
+│   │   ├── preferences.dart        # User preferences model
+│   │   └── screen_recording.dart   # Screen recording metadata model
+│   ├── providers/                   # State management (Provider pattern)
+│   │   └── app_state_provider.dart # Central app state provider
+│   ├── screens/                     # Full-screen UI components
+│   │   ├── home_screen.dart        # Main home screen with voice agent
+│   │   ├── settings_screen.dart    # Settings and preferences screen
+│   │   ├── history_screen.dart     # Conversation history screen
+│   │   ├── screen_recording_history_screen.dart # Screen recording history
+│   │   ├── voice_selection_screen.dart # Voice selection interface
+│   │   ├── privacy_policy_screen.dart # Privacy policy display
+│   │   └── terms_of_service_screen.dart # Terms of service display
+│   ├── services/                    # Business logic and platform integration
+│   │   ├── baidu_service.dart       # Baidu ERNIE Bot API integration
+│   │   ├── embedding_service.dart  # Embedding generation (Gemini) for RAG
+│   │   ├── gemini_service.dart     # Legacy Gemini service (kept for embeddings)
+│   │   ├── native_log_service.dart # Native logging service
+│   │   ├── permission_service.dart  # Permission handling (mic, screen recording)
+│   │   ├── recording_service.dart  # Screen recording via platform channels
+│   │   ├── screen_stream_service.dart # Continuous screen capture streaming
+│   │   ├── speech_service.dart      # Speech recognition via platform channels
+│   │   ├── storage_service.dart     # Local data persistence (SharedPreferences)
+│   │   └── tts_service.dart        # Text-to-speech service
+│   ├── utils/                       # Utility functions and helpers
+│   │   └── localization_helper.dart # Localization utilities
+│   ├── widgets/                     # Reusable UI components
+│   │   ├── voice_agent_circle.dart  # Animated voice agent circle widget
+│   │   ├── control_button.dart     # Control button component
+│   │   ├── onboarding_flow.dart    # Onboarding permission flow
+│   │   ├── permission_modal.dart   # Permission request modal
+│   │   ├── screen_recording_card.dart # Screen recording card widget
+│   │   └── legal_document_widgets.dart # Legal document display widgets
+│   └── l10n/                        # Localization files
+│       ├── app_en.arb              # English translations
+│       ├── app_zh.arb              # Chinese translations
+│       └── app_localizations*.dart  # Generated localization code
+├── ios/
+│   ├── Runner/                      # Main iOS app target
+│   │   ├── AppDelegate.swift       # iOS app delegate with background processing
+│   │   └── ...
+│   └── Asstify Screenshare/        # Broadcast extension for screen capture
+│       └── SampleHandler.swift     # Screen broadcast handler
+├── android/                         # Android platform code
+├── test/                           # Test files and benchmarks
+│   ├── benchmark_dataset.json      # Benchmark test dataset
+│   ├── run_benchmark.dart          # Benchmark runner
+│   ├── compare_results.dart        # Result comparison utilities
+│   └── README.md                   # Testing documentation
+├── supabase_function.sql           # Supabase RPC function for vector search
+├── pubspec.yaml                    # Flutter dependencies and configuration
+└── README.md                       # This file
 ```
 
 
