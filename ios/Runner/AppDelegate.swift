@@ -2863,7 +2863,7 @@ import Speech
       }
 
       guard let result = result, result.isFinal else {
-        if let result = result {
+        if result != nil {
           logToFlutter("⏳ Partial transcription result (not final yet)", category: "BroadcastAudio")
         }
         return
@@ -2983,18 +2983,21 @@ import Speech
 
     let selectedVoice: AVSpeechSynthesisVoice?
     if languageCode == "zh-Hans" {
-      // Prefer Lilian Premium, otherwise fall back to other enhanced Mandarin voices
-      let lilianPremium = voices.first { voice in
+      // Prefer Ting-Ting (enhanced), otherwise fall back to other enhanced Mandarin voices
+      let tingTing = voices.first { voice in
         let name = voice.name.lowercased()
-        return name.contains("lilian") && (voice.quality == .enhanced || name.contains("premium"))
+        return name.contains("ting-ting") && voice.quality == .enhanced
+      }
+      let tingTingDefault = voices.first { voice in
+        voice.name.lowercased().contains("ting-ting")
       }
       let anyEnhanced = voices.first { $0.quality == .enhanced }
-      selectedVoice = lilianPremium ?? anyEnhanced ?? voices.first
+      selectedVoice = tingTing ?? tingTingDefault ?? anyEnhanced ?? voices.first
     } else {
-      // Prefer Zoe (Premium), then other Siri voices, then Samantha, then default
-      let zoePremium = voices.first { voice in
-        let name = voice.name.lowercased()
-        return name.contains("zoe") && (voice.quality == .enhanced || name.contains("premium"))
+      // Prefer Siri Voice 4 (com.apple.voice.compact.en-US.Samantha), then other Siri voices, then Samantha, then default
+      let siriVoice4 = voices.first { voice in
+        // Siri Voice 4 identifier pattern
+        voice.identifier.contains("siri") && voice.identifier.contains("voice4")
       }
       let anySiri = voices.first { $0.identifier.lowercased().contains("siri") || $0.name.lowercased().contains("siri") }
       let samantha = voices.first {
@@ -3002,7 +3005,7 @@ import Speech
         let id = $0.identifier.lowercased()
         return name.contains("samantha") || id.contains("samantha")
       }
-      selectedVoice = zoePremium ?? anySiri ?? samantha ?? voices.first
+      selectedVoice = siriVoice4 ?? anySiri ?? samantha ?? voices.first
     }
 
     if let voice = selectedVoice {
