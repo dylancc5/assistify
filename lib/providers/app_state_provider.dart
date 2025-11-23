@@ -323,8 +323,13 @@ class AppStateProvider extends ChangeNotifier with WidgetsBindingObserver {
     final supabaseUrl = dotenv.env['SUPABASE_URL'];
     final supabaseAnonKey = dotenv.env['SUPABASE_ANON_KEY'];
 
-    if (baiduApiKey == null || baiduApiKey.isEmpty || baiduSecretKey == null || baiduSecretKey.isEmpty) {
-      debugPrint('⚠️ [BroadcastContext] Cannot set context - missing Baidu API credentials');
+    if (baiduApiKey == null ||
+        baiduApiKey.isEmpty ||
+        baiduSecretKey == null ||
+        baiduSecretKey.isEmpty) {
+      debugPrint(
+        '⚠️ [BroadcastContext] Cannot set context - missing Baidu API credentials',
+      );
       return;
     }
 
@@ -1056,7 +1061,9 @@ Current question/message: $message''';
 
       // App returned to foreground - check for background Baidu responses
       if (_isChatActive && _isScreenRecordingActive) {
-        debugPrint('🤖 [AppLifecycle] Chat + broadcast active - checking for background Baidu response...');
+        debugPrint(
+          '🤖 [AppLifecycle] Chat + broadcast active - checking for background Baidu response...',
+        );
         _checkBackgroundGeminiResponse();
       }
 
@@ -1090,8 +1097,12 @@ Current question/message: $message''';
       return;
     }
 
-    debugPrint('🤖 [BackgroundSync] ✓ Found background Baidu response - syncing to chat session');
-    debugPrint('   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."');
+    debugPrint(
+      '🤖 [BackgroundSync] ✓ Found background Baidu response - syncing to chat session',
+    );
+    debugPrint(
+      '   - User transcript: "${transcript.substring(0, transcript.length.clamp(0, 50))}..."',
+    );
     debugPrint('   - Response length: ${geminiResponse.length} chars');
 
     // Clear the response flag
