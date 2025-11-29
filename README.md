@@ -300,7 +300,6 @@ cd assistify
      ```
      BAIDU_API_KEY=your_baidu_api_key
      BAIDU_SECRET_KEY=your_baidu_secret_key
-     GEMINI_API_KEY=your_gemini_api_key
      SUPABASE_URL=your_supabase_url
      SUPABASE_ANON_KEY=your_supabase_anon_key
      ```
@@ -385,8 +384,8 @@ assistify/
 │   │   └── terms_of_service_screen.dart # Terms of service display
 │   ├── services/                    # Business logic and platform integration
 │   │   ├── baidu_service.dart       # Baidu ERNIE Bot API integration
-│   │   ├── embedding_service.dart  # Embedding generation (Gemini) for RAG
-│   │   ├── gemini_service.dart     # Legacy Gemini service (kept for embeddings)
+│   │   ├── embedding_service.dart  # Embedding generation for RAG
+│   │   ├── baidu_service.dart     # Legacy service (kept for embeddings)
 │   │   ├── native_log_service.dart # Native logging service
 │   │   ├── permission_service.dart  # Permission handling (mic, screen recording)
 │   │   ├── recording_service.dart  # Screen recording via platform channels
