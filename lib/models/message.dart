@@ -1,6 +1,7 @@
 /// Enum to identify the sender of a message
 enum MessageSender { user, agent }
 
+
 /// Model representing a single message/speech segment in a conversation
 class Message {
   final String id;
