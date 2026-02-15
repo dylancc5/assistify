@@ -6,7 +6,7 @@ Watch our demo here: https://www.youtube.com/watch?v=Gn3NqlGXeak
 ---
 [![Youtube Cover](https://img.youtube.com/vi/Gn3NqlGXeak/0.jpg)](https://www.youtube.com/watch?v=Gn3NqlGXeak)
 
-Writeup: https://openatom.tech/antheaguo/Assistify
+Writeup: [https://openatom.tech/antheaguo/Assistify](https://aistudio.baidu.com/projectdetail/9813229?channelType=0&channel=0)
 
 ## Our Mission
 
