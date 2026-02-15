@@ -5,6 +5,9 @@
 Watch our demo here: https://www.youtube.com/watch?v=Gn3NqlGXeak
 ---
 [![Youtube Cover](https://img.youtube.com/vi/Gn3NqlGXeak/0.jpg)](https://www.youtube.com/watch?v=Gn3NqlGXeak)
+
+Writeup: https://openatom.tech/antheaguo/Assistify
+
 ## Our Mission
 
 Assistify bridges the digital divide for elderly users by transforming complex smartphone interfaces into intuitive, accessible experiences. We believe that technology should empower everyone, regardless of age or technical proficiency, to communicate, access services, and confidently participate fully in digital life.
